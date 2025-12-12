@@ -1,12 +1,23 @@
 from __future__ import annotations
 
-import difflib
 from pathlib import Path
 import re
 import shutil
 from typing import ClassVar, NamedTuple, final
 
-import aiofiles
+try:
+    from rapidfuzz import fuzz
+    from rapidfuzz.distance import Levenshtein
+    HAS_RAPIDFUZZ = True
+except ImportError:
+    import difflib
+    HAS_RAPIDFUZZ = False
+
+try:
+    import aerofs as aiofiles
+except ImportError:
+    import aiofiles  # type: ignore[no-redef]
+
 from pydantic import BaseModel, Field
 
 from vibe.core.tools.base import BaseTool, BaseToolConfig, BaseToolState, ToolError
@@ -247,47 +258,150 @@ class SearchReplace(
         current_content = content
 
         for i, (search, replace) in enumerate(blocks, 1):
-            if search not in current_content:
-                context = SearchReplace._find_search_context(current_content, search)
-                fuzzy_context = SearchReplace._find_fuzzy_match_context(
-                    current_content, search, fuzzy_threshold
-                )
+            if search in current_content:
+                occurrences = current_content.count(search)
+                if occurrences > 1:
+                    warning_msg = (
+                        f"Search text in block {i} appears {occurrences} times in the file. "
+                        f"Only the first occurrence will be replaced. Consider making your "
+                        f"search pattern more specific to avoid unintended changes."
+                    )
+                    warnings.append(warning_msg)
 
-                error_msg = (
-                    f"SEARCH/REPLACE block {i} failed: Search text not found in {filepath}\n"
-                    f"Search text was:\n{search!r}\n"
-                    f"Context analysis:\n{context}"
-                )
-
-                if fuzzy_context:
-                    error_msg += f"\n{fuzzy_context}"
-
-                error_msg += (
-                    "\nDebugging tips:\n"
-                    "1. Check for exact whitespace/indentation match\n"
-                    "2. Verify line endings match the file exactly (\\r\\n vs \\n)\n"
-                    "3. Ensure the search text hasn't been modified by previous blocks or user edits\n"
-                    "4. Check for typos or case sensitivity issues"
-                )
-
-                errors.append(error_msg)
+                current_content = current_content.replace(search, replace, 1)
+                applied += 1
                 continue
 
-            occurrences = current_content.count(search)
-            if occurrences > 1:
-                warning_msg = (
-                    f"Search text in block {i} appears {occurrences} times in the file. "
-                    f"Only the first occurrence will be replaced. Consider making your "
-                    f"search pattern more specific to avoid unintended changes."
+            normalized_match = SearchReplace._find_normalized_match(
+                current_content, search
+            )
+            if normalized_match:
+                actual_text, start_idx, end_idx = normalized_match
+                adjusted_replace = SearchReplace._adjust_replacement_indentation(
+                    search, replace, actual_text
                 )
-                warnings.append(warning_msg)
+                current_content = (
+                    current_content[:start_idx]
+                    + adjusted_replace
+                    + current_content[end_idx:]
+                )
+                warnings.append(
+                    f"Block {i}: Applied with whitespace normalization. "
+                    f"Original search had different indentation than file content."
+                )
+                applied += 1
+                continue
 
-            current_content = current_content.replace(search, replace, 1)
-            applied += 1
+            context = SearchReplace._find_search_context(current_content, search)
+            fuzzy_context = SearchReplace._find_fuzzy_match_context(
+                current_content, search, fuzzy_threshold
+            )
+
+            error_msg = (
+                f"SEARCH/REPLACE block {i} failed: Search text not found in {filepath}\n"
+                f"Search text was:\n{search!r}\n"
+                f"Context analysis:\n{context}"
+            )
+
+            if fuzzy_context:
+                error_msg += f"\n{fuzzy_context}"
+
+            error_msg += (
+                "\nDebugging tips:\n"
+                "1. Check for exact whitespace/indentation match\n"
+                "2. Verify line endings match the file exactly (\\r\\n vs \\n)\n"
+                "3. Ensure the search text hasn't been modified by previous blocks or user edits\n"
+                "4. Check for typos or case sensitivity issues"
+            )
+
+            errors.append(error_msg)
 
         return BlockApplyResult(
             content=current_content, applied=applied, errors=errors, warnings=warnings
         )
+
+    @final
+    @staticmethod
+    def _find_normalized_match(
+        content: str, search: str
+    ) -> tuple[str, int, int] | None:
+        search_lines = search.split("\n")
+        content_lines = content.split("\n")
+
+        if not search_lines:
+            return None
+
+        first_search_stripped = None
+        for line in search_lines:
+            if line.strip():
+                first_search_stripped = line.strip()
+                break
+
+        if not first_search_stripped:
+            return None
+
+        for content_idx, content_line in enumerate(content_lines):
+            if first_search_stripped in content_line.strip():
+                if content_idx + len(search_lines) > len(content_lines):
+                    continue
+
+                matches = True
+                for j, search_line in enumerate(search_lines):
+                    content_line_at_j = content_lines[content_idx + j]
+                    if search_line.strip() != content_line_at_j.strip():
+                        matches = False
+                        break
+
+                if matches:
+                    matched_lines = content_lines[content_idx:content_idx + len(search_lines)]
+                    matched_text = "\n".join(matched_lines)
+
+                    start_idx = sum(len(line) + 1 for line in content_lines[:content_idx])
+                    end_idx = start_idx + len(matched_text)
+
+                    return (matched_text, start_idx, end_idx)
+
+        return None
+
+    @final
+    @staticmethod
+    def _adjust_replacement_indentation(
+        search: str, replace: str, actual_text: str
+    ) -> str:
+        search_lines = search.split("\n")
+        actual_lines = actual_text.split("\n")
+        replace_lines = replace.split("\n")
+
+        if not search_lines or not actual_lines:
+            return replace
+
+        def get_leading_whitespace(s: str) -> str:
+            return s[:len(s) - len(s.lstrip())]
+
+        search_indent = ""
+        actual_indent = ""
+        for s_line, a_line in zip(search_lines, actual_lines):
+            if s_line.strip():
+                search_indent = get_leading_whitespace(s_line)
+                actual_indent = get_leading_whitespace(a_line)
+                break
+
+        adjusted_lines = []
+        for r_line in replace_lines:
+            r_indent = get_leading_whitespace(r_line)
+            if r_line.strip():
+                if search_indent and r_indent.startswith(search_indent):
+                    relative_indent = r_indent[len(search_indent):]
+                    new_line = actual_indent + relative_indent + r_line.lstrip()
+                elif not search_indent:
+                    new_line = actual_indent + r_line
+                else:
+                    new_line = actual_indent + r_line.lstrip()
+            else:
+                new_line = r_line
+            adjusted_lines.append(new_line)
+
+        return "\n".join(adjusted_lines)
 
     @final
     @staticmethod
@@ -355,8 +469,12 @@ class SearchReplace(
             end = start + window_size
             window_text = "\n".join(content_lines[start:end])
 
-            matcher = difflib.SequenceMatcher(None, search_text, window_text)
-            similarity = matcher.ratio()
+            if HAS_RAPIDFUZZ:
+                similarity = fuzz.ratio(search_text, window_text) / 100.0
+            else:
+                import difflib
+                matcher = difflib.SequenceMatcher(None, search_text, window_text)
+                similarity = matcher.ratio()
 
             if similarity >= threshold and similarity > best_similarity:
                 best_similarity = similarity

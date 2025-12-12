@@ -3,7 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, NamedTuple, final
 
-import aiofiles
+try:
+    import aerofs as aiofiles
+except ImportError:
+    import aiofiles  # type: ignore[no-redef]
+
 from pydantic import BaseModel, Field
 
 from vibe.core.tools.base import (
@@ -23,6 +27,7 @@ class _ReadResult(NamedTuple):
     lines: list[str]
     bytes_read: int
     was_truncated: bool
+    start_line: int
 
 
 class ReadFileArgs(BaseModel):
@@ -33,6 +38,10 @@ class ReadFileArgs(BaseModel):
     )
     limit: int | None = Field(
         default=None, description="Maximum number of lines to read."
+    )
+    show_line_numbers: bool = Field(
+        default=False,
+        description="Include line numbers in output (e.g., '1: content').",
     )
 
 
@@ -77,9 +86,18 @@ class ReadFile(
 
         self._update_state_history(file_path)
 
+        if args.show_line_numbers:
+            numbered_lines = [
+                f"{read_result.start_line + i}: {line}"
+                for i, line in enumerate(read_result.lines)
+            ]
+            content = "".join(numbered_lines)
+        else:
+            content = "".join(read_result.lines)
+
         return ReadFileResult(
             path=str(file_path),
-            content="".join(read_result.lines),
+            content=content,
             lines_read=len(read_result.lines),
             was_truncated=read_result.was_truncated,
         )
@@ -141,6 +159,7 @@ class ReadFile(
                 lines=lines_to_return,
                 bytes_read=bytes_read,
                 was_truncated=was_truncated,
+                start_line=args.offset + 1,
             )
 
         except OSError as exc:

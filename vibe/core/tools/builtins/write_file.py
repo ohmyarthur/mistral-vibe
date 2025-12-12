@@ -3,7 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import ClassVar, final
 
-import aiofiles
+try:
+    import aerofs as aiofiles
+except ImportError:
+    import aiofiles  # type: ignore[no-redef]
+
 from pydantic import BaseModel, Field
 
 from vibe.core.tools.base import (

@@ -54,5 +54,8 @@ class ReadFile(CoreReadFileTool, BaseAcpTool[AcpReadFileState]):
         was_truncated = args.limit is not None and lines_read >= args.limit
 
         return _ReadResult(
-            lines=content_lines, bytes_read=bytes_read, was_truncated=was_truncated
+            lines=content_lines,
+            bytes_read=bytes_read,
+            was_truncated=was_truncated,
+            start_line=args.offset + 1,  # 1-indexed for display
         )
