@@ -1,25 +1,27 @@
 from __future__ import annotations
 
-import pytest
 from pathlib import Path
 
-from vibe.core.tools.base import BaseToolState
+import pytest
+
 from vibe.core.tools.builtins.multi_edit import (
+    DiffGenerator,
+    EditBlock,
+    FileEdit,
+    MatchingEngine,
+    MatchTier,
     MultiEdit,
     MultiEditArgs,
     MultiEditConfig,
-    FileEdit,
-    EditBlock,
-    MatchingEngine,
-    MatchTier,
+    MultiEditState,
     SafetyChecker,
-    DiffGenerator,
 )
+
 
 @pytest.fixture
 def multi_edit_tool(tmp_path):
     config = MultiEditConfig(workdir=tmp_path)
-    return MultiEdit(config=config, state=BaseToolState())
+    return MultiEdit(config=config, state=MultiEditState())
 
 
 @pytest.fixture
@@ -41,13 +43,14 @@ def goodbye():
 
 @pytest.fixture
 def config_file(tmp_path):
-    content = '''DEBUG = True
+    content = """DEBUG = True
 LOG_LEVEL = "INFO"
 MAX_CONNECTIONS = 100
-'''
+"""
     file_path = tmp_path / "config.py"
     file_path.write_text(content)
     return file_path
+
 
 class TestMatchingEngine:
     def test_tier1_exact_match(self):
@@ -79,11 +82,11 @@ class TestMatchingEngine:
         assert result.tier in [MatchTier.EXACT, MatchTier.NORMALIZED]
 
     def test_tier3_anchored_match(self):
-        content = '''def foo():
+        content = """def foo():
     # anchor before
     target_line = "important"
     # anchor after
-'''
+"""
         edit = EditBlock(
             search='target_line = "important"',
             replace='target_line = "modified"',
@@ -97,17 +100,14 @@ class TestMatchingEngine:
         assert result.tier in [MatchTier.EXACT, MatchTier.ANCHORED]
 
     def test_tier4_line_range_match(self):
-        content = '''line 1
+        content = """line 1
 line 2
 target here
 line 4
 line 5
-'''
+"""
         edit = EditBlock(
-            search="target here",
-            replace="modified here",
-            line_start=2,
-            line_end=4,
+            search="target here", replace="modified here", line_start=2, line_end=4
         )
 
         result = MatchingEngine.match(content, edit)
@@ -116,26 +116,25 @@ line 5
 
     def test_tier5_fuzzy_no_auto_apply(self):
         content = "Hello World"
-        edit = EditBlock(search="Hello Wrold", replace="Hi Universe")  # Typo
+        edit = EditBlock(search="Hello World", replace="Hi Universe")  # Typo
 
         result = MatchingEngine.match(content, edit)
 
         if result.tier == MatchTier.FUZZY:
             assert not result.success
 
+
 class TestMultiEdit:
     @pytest.mark.asyncio
     async def test_dry_run_single_file(self, tmp_path, config_file):
         config = MultiEditConfig(workdir=tmp_path)
-        tool = MultiEdit(config=config, state=BaseToolState())
+        tool = MultiEdit(config=config, state=MultiEditState())
 
         args = MultiEditArgs(
             files=[
                 FileEdit(
                     path=str(config_file),
-                    edits=[
-                        EditBlock(search="DEBUG = True", replace="DEBUG = False")
-                    ],
+                    edits=[EditBlock(search="DEBUG = True", replace="DEBUG = False")],
                 )
             ],
             dry_run=True,
@@ -154,15 +153,13 @@ class TestMultiEdit:
     @pytest.mark.asyncio
     async def test_apply_single_edit(self, tmp_path, config_file):
         config = MultiEditConfig(workdir=tmp_path)
-        tool = MultiEdit(config=config, state=BaseToolState())
+        tool = MultiEdit(config=config, state=MultiEditState())
 
         args = MultiEditArgs(
             files=[
                 FileEdit(
                     path=str(config_file),
-                    edits=[
-                        EditBlock(search="DEBUG = True", replace="DEBUG = False")
-                    ],
+                    edits=[EditBlock(search="DEBUG = True", replace="DEBUG = False")],
                 )
             ],
             dry_run=False,
@@ -179,7 +176,7 @@ class TestMultiEdit:
     @pytest.mark.asyncio
     async def test_multiple_edits_single_file(self, tmp_path, config_file):
         config = MultiEditConfig(workdir=tmp_path)
-        tool = MultiEdit(config=config, state=BaseToolState())
+        tool = MultiEdit(config=config, state=MultiEditState())
 
         args = MultiEditArgs(
             files=[
@@ -187,7 +184,9 @@ class TestMultiEdit:
                     path=str(config_file),
                     edits=[
                         EditBlock(search="DEBUG = True", replace="DEBUG = False"),
-                        EditBlock(search='LOG_LEVEL = "INFO"', replace='LOG_LEVEL = "DEBUG"'),
+                        EditBlock(
+                            search='LOG_LEVEL = "INFO"', replace='LOG_LEVEL = "DEBUG"'
+                        ),
                     ],
                 )
             ],
@@ -211,12 +210,18 @@ class TestMultiEdit:
         file2.write_text("VERSION = 1")
 
         config = MultiEditConfig(workdir=tmp_path)
-        tool = MultiEdit(config=config, state=BaseToolState())
+        tool = MultiEdit(config=config, state=MultiEditState())
 
         args = MultiEditArgs(
             files=[
-                FileEdit(path=str(file1), edits=[EditBlock(search="VERSION = 1", replace="VERSION = 2")]),
-                FileEdit(path=str(file2), edits=[EditBlock(search="VERSION = 1", replace="VERSION = 2")]),
+                FileEdit(
+                    path=str(file1),
+                    edits=[EditBlock(search="VERSION = 1", replace="VERSION = 2")],
+                ),
+                FileEdit(
+                    path=str(file2),
+                    edits=[EditBlock(search="VERSION = 1", replace="VERSION = 2")],
+                ),
             ],
             dry_run=False,
         )
@@ -234,7 +239,7 @@ class TestMultiEdit:
         file1.write_text("GOOD = True")
 
         config = MultiEditConfig(workdir=tmp_path)
-        tool = MultiEdit(config=config, state=BaseToolState())
+        tool = MultiEdit(config=config, state=MultiEditState())
 
         args = MultiEditArgs(
             files=[
@@ -242,7 +247,9 @@ class TestMultiEdit:
                     path=str(file1),
                     edits=[
                         EditBlock(search="GOOD = True", replace="GOOD = Modified"),
-                        EditBlock(search="NONEXISTENT", replace="FAIL"),  # This will fail
+                        EditBlock(
+                            search="NONEXISTENT", replace="FAIL"
+                        ),  # This will fail
                     ],
                 )
             ],
@@ -258,7 +265,7 @@ class TestMultiEdit:
     @pytest.mark.asyncio
     async def test_creates_backup(self, tmp_path, config_file):
         config = MultiEditConfig(workdir=tmp_path)
-        tool = MultiEdit(config=config, state=BaseToolState())
+        tool = MultiEdit(config=config, state=MultiEditState())
 
         original_content = config_file.read_text()
 
@@ -285,7 +292,7 @@ class TestMultiEdit:
     @pytest.mark.asyncio
     async def test_hash_conflict_detection(self, tmp_path, config_file):
         config = MultiEditConfig(workdir=tmp_path)
-        tool = MultiEdit(config=config, state=BaseToolState())
+        tool = MultiEdit(config=config, state=MultiEditState())
 
         args = MultiEditArgs(
             files=[
@@ -306,7 +313,7 @@ class TestMultiEdit:
     @pytest.mark.asyncio
     async def test_file_not_found(self, tmp_path):
         config = MultiEditConfig(workdir=tmp_path)
-        tool = MultiEdit(config=config, state=BaseToolState())
+        tool = MultiEdit(config=config, state=MultiEditState())
 
         args = MultiEditArgs(
             files=[
@@ -314,7 +321,7 @@ class TestMultiEdit:
                     path=str(tmp_path / "nonexistent.py"),
                     edits=[EditBlock(search="x", replace="y")],
                 )
-            ],
+            ]
         )
 
         result = await tool.run(args)
@@ -325,7 +332,7 @@ class TestMultiEdit:
     @pytest.mark.asyncio
     async def test_check_only_mode(self, tmp_path, config_file):
         config = MultiEditConfig(workdir=tmp_path)
-        tool = MultiEdit(config=config, state=BaseToolState())
+        tool = MultiEdit(config=config, state=MultiEditState())
 
         args = MultiEditArgs(
             files=[
@@ -347,14 +354,14 @@ class TestMultiEdit:
     @pytest.mark.asyncio
     async def test_generates_reject_file(self, tmp_path, config_file):
         config = MultiEditConfig(workdir=tmp_path)
-        tool = MultiEdit(config=config, state=BaseToolState())
+        tool = MultiEdit(config=config, state=MultiEditState())
 
         args = MultiEditArgs(
             files=[
                 FileEdit(
                     path=str(config_file),
                     edits=[
-                        EditBlock(search="NONEXISTENT_STRING", replace="REPLACEMENT"),
+                        EditBlock(search="NONEXISTENT_STRING", replace="REPLACEMENT")
                     ],
                 )
             ],
@@ -366,6 +373,7 @@ class TestMultiEdit:
         assert not result.success
         assert result.reject_files
         assert "NONEXISTENT_STRING" in list(result.reject_files.values())[0]
+
 
 class TestSafetyChecker:
     @pytest.mark.asyncio
@@ -385,6 +393,7 @@ class TestSafetyChecker:
         assert not passed
         assert any("merge" in e.lower() for e in errors)
 
+
 class TestDiffGenerator:
     """Tests for diff generation."""
 
@@ -399,21 +408,17 @@ class TestDiffGenerator:
         assert "-line2" in diff
         assert "+modified" in diff
 
+
 def test_get_call_display():
     from vibe.core.types import ToolCallEvent
 
     args = MultiEditArgs(
-        files=[
-            FileEdit(path="test.py", edits=[EditBlock(search="a", replace="b")])
-        ],
+        files=[FileEdit(path="test.py", edits=[EditBlock(search="a", replace="b")])],
         dry_run=True,
     )
 
     event = ToolCallEvent(
-        tool_call_id="test",
-        tool_name="multi_edit",
-        tool_class=MultiEdit,
-        args=args,
+        tool_call_id="test", tool_name="multi_edit", tool_class=MultiEdit, args=args
     )
 
     display = MultiEdit.get_call_display(event)

@@ -234,12 +234,17 @@ class InteractionLogger:
         return None
 
     @staticmethod
-    def load_session(filepath: Path) -> tuple[list[LLMMessage], dict[str, Any]]:
-        with filepath.open("r", encoding="utf-8") as f:
-            content = f.read()
+    async def load_session(filepath: Path) -> tuple[list[LLMMessage], dict[str, Any]]:
+        import asyncio
 
-        data = json.loads(content)
-        messages = [LLMMessage.model_validate(msg) for msg in data.get("messages", [])]
-        metadata = data.get("metadata", {})
+        def _load_sync() -> tuple[list[LLMMessage], dict[str, Any]]:
+            with filepath.open("r", encoding="utf-8") as f:
+                content = f.read()
+            data = json.loads(content)
+            messages = [
+                LLMMessage.model_validate(msg) for msg in data.get("messages", [])
+            ]
+            metadata = data.get("metadata", {})
+            return messages, metadata
 
-        return messages, metadata
+        return await asyncio.to_thread(_load_sync)

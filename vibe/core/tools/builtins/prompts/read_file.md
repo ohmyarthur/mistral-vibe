@@ -12,4 +12,3 @@ Use `read_file` to read the content of a file. It's designed to handle large fil
 3. To read the next chunk, call `read_file` again with an `offset`. For example, `offset=1000, limit=1000`.
 
 This is more efficient than using `bash` with `cat` or `wc`.
-

@@ -119,7 +119,7 @@ class Grep(
         self._validate_args(args)
         self.state.search_history.append(args.pattern)
 
-        exclude_patterns = self._collect_exclude_patterns()
+        exclude_patterns = await self._collect_exclude_patterns()
         cmd = self._build_command(args, exclude_patterns, backend)
         stdout = await self._execute_search(cmd)
 
@@ -138,19 +138,19 @@ class Grep(
         if not path_obj.exists():
             raise ToolError(f"Path does not exist: {args.path}")
 
-    def _collect_exclude_patterns(self) -> list[str]:
+    async def _collect_exclude_patterns(self) -> list[str]:
         patterns = list(self.config.exclude_patterns)
 
         codeignore_path = self.config.effective_workdir / self.config.codeignore_file
         if codeignore_path.is_file():
-            patterns.extend(self._load_codeignore_patterns(codeignore_path))
+            patterns.extend(await self._load_codeignore_patterns(codeignore_path))
 
         return patterns
 
-    def _load_codeignore_patterns(self, codeignore_path: Path) -> list[str]:
+    async def _load_codeignore_patterns(self, codeignore_path: Path) -> list[str]:
         patterns = []
         try:
-            content = codeignore_path.read_text("utf-8")
+            content = await asyncio.to_thread(codeignore_path.read_text, "utf-8")
             for line in content.splitlines():
                 line = line.strip()
                 if line and not line.startswith("#"):

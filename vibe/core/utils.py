@@ -6,6 +6,7 @@ import concurrent.futures
 from enum import Enum, StrEnum, auto
 import functools
 import logging
+import os
 from pathlib import Path
 import re
 import sys
@@ -287,3 +288,40 @@ def run_sync[T](coro: Coroutine[Any, Any, T]) -> T:
 
 def is_windows() -> bool:
     return sys.platform == "win32"
+
+
+try:
+    import aerofs
+
+    HAS_AEROFS = True
+except ImportError:
+    import aiofiles  # type: ignore
+
+    HAS_AEROFS = False
+
+
+async def async_read_text(path: Path, encoding: str = "utf-8") -> str:
+    if HAS_AEROFS:
+        return await aerofs.fs.read_text(str(path), encoding=encoding)  # type: ignore
+    async with aiofiles.open(path, encoding=encoding) as f:  # type: ignore
+        return await f.read()
+
+
+async def async_write_text(path: Path, content: str, encoding: str = "utf-8") -> None:
+    if HAS_AEROFS:
+        await aerofs.fs.write_text(str(path), content, encoding=encoding)  # type: ignore
+    else:
+        async with aiofiles.open(path, mode="w", encoding=encoding) as f:  # type: ignore
+            await f.write(content)
+
+
+async def async_listdir(path: Path) -> list[str]:
+    if HAS_AEROFS:
+        return await aerofs.os.listdir(str(path))  # type: ignore
+    return await asyncio.to_thread(os.listdir, path)
+
+
+async def async_stat(path: Path) -> os.stat_result:
+    if HAS_AEROFS:
+        return await aerofs.os.stat(str(path))  # type: ignore
+    return await asyncio.to_thread(path.stat)

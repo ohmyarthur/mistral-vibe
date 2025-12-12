@@ -1,11 +1,11 @@
 [project]
 name = "mistral-vibe"
 version = "1.1.2"
-description = "Minimal CLI coding agent by Mistral"
+description = "Experimental fork of Mistral Vibe CLI coding agent"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
-authors = [{ name = "Mistral AI" }]
+authors = [{ name = "ohmyarthur" }]
 keywords = [
     "ai",
     "cli",
@@ -15,7 +15,7 @@ keywords = [
     "developer-tools",
 ]
 classifiers = [
-    "Development Status :: 5 - Production/Stable",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
@@ -23,7 +23,6 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
     "Topic :: Software Development",
-    "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Utilities",
 ]
 dependencies = [
@@ -48,10 +47,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/mistralai/mistral-vibe"
-Repository = "https://github.com/mistralai/mistral-vibe"
-Issues = "https://github.com/mistralai/mistral-vibe/issues"
-Documentation = "https://github.com/mistralai/mistral-vibe#readme"
+Homepage = "https://github.com/ohmyarthur/mistral-vibe"
+Repository = "https://github.com/ohmyarthur/mistral-vibe"
+Issues = "https://github.com/ohmyarthur/mistral-vibe/issues"
 
 
 [build-system]

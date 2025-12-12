@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 
@@ -11,9 +12,9 @@ class HistoryManager:
         self._entries: list[str] = []
         self._current_index: int = -1
         self._temp_input: str = ""
-        self._load_history()
+        self._load_history_sync()
 
-    def _load_history(self) -> None:
+    def _load_history_sync(self) -> None:
         if not self.history_file.exists():
             return
 
@@ -33,7 +34,10 @@ class HistoryManager:
         except (OSError, UnicodeDecodeError):
             self._entries = []
 
-    def _save_history(self) -> None:
+    async def _load_history(self) -> None:
+        await asyncio.to_thread(self._load_history_sync)
+
+    def _save_history_sync(self) -> None:
         try:
             self.history_file.parent.mkdir(parents=True, exist_ok=True)
             with self.history_file.open("w", encoding="utf-8") as f:
@@ -41,6 +45,16 @@ class HistoryManager:
                     f.write(json.dumps(entry) + "\n")
         except OSError:
             pass
+
+    async def _save_history(self) -> None:
+        await asyncio.to_thread(self._save_history_sync)
+
+    def _save_history_fire_and_forget(self) -> None:
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(self._save_history())
+        except RuntimeError:
+            self._save_history_sync()
 
     def add(self, text: str) -> None:
         text = text.strip()
@@ -55,7 +69,7 @@ class HistoryManager:
         if len(self._entries) > self.max_entries:
             self._entries = self._entries[-self.max_entries :]
 
-        self._save_history()
+        self._save_history_fire_and_forget()
         self.reset_navigation()
 
     def get_previous(self, current_input: str, prefix: str = "") -> str | None:

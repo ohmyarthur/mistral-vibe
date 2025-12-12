@@ -3,10 +3,10 @@ from __future__ import annotations
 import pytest
 import pytest_asyncio
 
-from vibe.core.tools.base import BaseToolState
 from vibe.core.tools.builtins.git_status import (
     GitStatus,
     GitStatusArgs,
+    GitStatusState,
     GitStatusToolConfig,
 )
 
@@ -14,7 +14,7 @@ from vibe.core.tools.builtins.git_status import (
 @pytest.fixture
 def git_tool(tmp_path):
     config = GitStatusToolConfig(workdir=tmp_path)
-    return GitStatus(config=config, state=BaseToolState())
+    return GitStatus(config=config, state=GitStatusState())
 
 
 @pytest_asyncio.fixture
@@ -23,7 +23,8 @@ async def git_repo(tmp_path):
 
     async def run(*args):
         proc = await asyncio.create_subprocess_exec(
-            *args, cwd=tmp_path,
+            *args,
+            cwd=tmp_path,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -51,7 +52,7 @@ async def test_detects_non_git_repo(git_tool):
 @pytest.mark.asyncio
 async def test_detects_git_repo(tmp_path, git_repo):
     config = GitStatusToolConfig(workdir=git_repo)
-    tool = GitStatus(config=config, state=BaseToolState())
+    tool = GitStatus(config=config, state=GitStatusState())
 
     result = await tool.run(GitStatusArgs())
 
@@ -61,7 +62,7 @@ async def test_detects_git_repo(tmp_path, git_repo):
 @pytest.mark.asyncio
 async def test_gets_branch_name(tmp_path, git_repo):
     config = GitStatusToolConfig(workdir=git_repo)
-    tool = GitStatus(config=config, state=BaseToolState())
+    tool = GitStatus(config=config, state=GitStatusState())
 
     result = await tool.run(GitStatusArgs())
 
@@ -73,7 +74,7 @@ async def test_detects_untracked_files(tmp_path, git_repo):
     (git_repo / "untracked.txt").write_text("new file")
 
     config = GitStatusToolConfig(workdir=git_repo)
-    tool = GitStatus(config=config, state=BaseToolState())
+    tool = GitStatus(config=config, state=GitStatusState())
 
     result = await tool.run(GitStatusArgs(include_untracked=True))
 
@@ -85,7 +86,7 @@ async def test_excludes_untracked_when_disabled(tmp_path, git_repo):
     (git_repo / "untracked.txt").write_text("new file")
 
     config = GitStatusToolConfig(workdir=git_repo)
-    tool = GitStatus(config=config, state=BaseToolState())
+    tool = GitStatus(config=config, state=GitStatusState())
 
     result = await tool.run(GitStatusArgs(include_untracked=False))
 
@@ -97,7 +98,7 @@ async def test_detects_modified_files(tmp_path, git_repo):
     (git_repo / "file.txt").write_text("modified content")
 
     config = GitStatusToolConfig(workdir=git_repo)
-    tool = GitStatus(config=config, state=BaseToolState())
+    tool = GitStatus(config=config, state=GitStatusState())
 
     result = await tool.run(GitStatusArgs())
 
@@ -116,7 +117,7 @@ async def test_detects_staged_files(tmp_path, git_repo):
     await proc.communicate()
 
     config = GitStatusToolConfig(workdir=git_repo)
-    tool = GitStatus(config=config, state=BaseToolState())
+    tool = GitStatus(config=config, state=GitStatusState())
 
     result = await tool.run(GitStatusArgs())
 
@@ -127,11 +128,13 @@ async def test_detects_staged_files(tmp_path, git_repo):
 @pytest.mark.asyncio
 async def test_generates_clean_summary(tmp_path, git_repo):
     config = GitStatusToolConfig(workdir=git_repo)
-    tool = GitStatus(config=config, state=BaseToolState())
+    tool = GitStatus(config=config, state=GitStatusState())
 
     result = await tool.run(GitStatusArgs())
 
-    assert "clean" in result.summary.lower() or result.branch in result.summary
+    assert "clean" in result.summary.lower() or (
+        result.branch and result.branch in result.summary
+    )
 
 
 @pytest.mark.asyncio
@@ -140,7 +143,7 @@ async def test_generates_summary_with_changes(tmp_path, git_repo):
     (git_repo / "untracked.txt").write_text("new")
 
     config = GitStatusToolConfig(workdir=git_repo)
-    tool = GitStatus(config=config, state=BaseToolState())
+    tool = GitStatus(config=config, state=GitStatusState())
 
     result = await tool.run(GitStatusArgs())
 
@@ -152,10 +155,7 @@ def test_get_call_display():
 
     args = GitStatusArgs()
     event = ToolCallEvent(
-        tool_call_id="test",
-        tool_name="git_status",
-        tool_class=GitStatus,
-        args=args,
+        tool_call_id="test", tool_name="git_status", tool_class=GitStatus, args=args
     )
 
     display = GitStatus.get_call_display(event)

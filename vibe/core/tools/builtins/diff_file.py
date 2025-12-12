@@ -30,12 +30,10 @@ class DiffHunk(BaseModel):
 class DiffFileArgs(BaseModel):
     path: str = Field(description="Path to file to diff.")
     staged: bool = Field(
-        default=False,
-        description="Show staged changes (git add'd) vs unstaged.",
+        default=False, description="Show staged changes (git add'd) vs unstaged."
     )
     context_lines: int = Field(
-        default=3,
-        description="Number of context lines around changes.",
+        default=3, description="Number of context lines around changes."
     )
 
 
@@ -58,6 +56,10 @@ class DiffFileState(BaseToolState):
     pass
 
 
+MAX_HUNKS_DISPLAY = 5
+MAX_LINES_DISPLAY = 3
+
+
 class DiffFile(
     BaseTool[DiffFileArgs, DiffFileResult, DiffFileToolConfig, DiffFileState],
     ToolUIData[DiffFileArgs, DiffFileResult],
@@ -76,13 +78,13 @@ class DiffFile(
         if not is_git:
             raise ToolError("Not a git repository")
 
-        diff_text = await self._get_diff(workdir, file_path, args.staged, args.context_lines)
+        diff_text = await self._get_diff(
+            workdir, file_path, args.staged, args.context_lines
+        )
 
         if not diff_text.strip():
             return DiffFileResult(
-                path=str(file_path),
-                has_changes=False,
-                summary="No changes",
+                path=str(file_path), has_changes=False, summary="No changes"
             )
 
         additions, deletions = self._count_changes(diff_text)
@@ -96,7 +98,7 @@ class DiffFile(
             additions=additions,
             deletions=deletions,
             hunks=hunks,
-            diff_text=diff_text[:self.config.max_diff_size],
+            diff_text=diff_text[: self.config.max_diff_size],
             summary=summary,
         )
 
@@ -108,7 +110,9 @@ class DiffFile(
 
     async def _is_git_repo(self, workdir: Path) -> bool:
         proc = await asyncio.create_subprocess_exec(
-            "git", "rev-parse", "--git-dir",
+            "git",
+            "rev-parse",
+            "--git-dir",
             cwd=workdir,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -150,6 +154,7 @@ class DiffFile(
         current_hunk: DiffHunk | None = None
 
         import re
+
         hunk_header_re = re.compile(r"^@@ -(\d+),?\d* \+(\d+),?\d* @@(.*)$")
 
         for line in diff_text.splitlines():
@@ -199,22 +204,24 @@ class DiffFile(
         if not result.has_changes:
             return ToolResultDisplay(success=True, message="No changes")
 
-        lines = [
-            f"📊 {result.summary}",
-            "",
-        ]
+        lines = [f"📊 {result.summary}", ""]
 
-        for i, hunk in enumerate(result.hunks[:5], 1):
+        for i, hunk in enumerate(result.hunks[:MAX_HUNKS_DISPLAY], 1):
             lines.append(f"Hunk {i} (L{hunk.start_line}):")
-            for line in hunk.old_lines[:3]:
+            for line in hunk.old_lines[:MAX_LINES_DISPLAY]:
                 lines.append(f"  - {line}")
-            for line in hunk.new_lines[:3]:
+            for line in hunk.new_lines[:MAX_LINES_DISPLAY]:
                 lines.append(f"  + {line}")
-            if len(hunk.old_lines) > 3 or len(hunk.new_lines) > 3:
+            if (
+                len(hunk.old_lines) > MAX_LINES_DISPLAY
+                or len(hunk.new_lines) > MAX_LINES_DISPLAY
+            ):
                 lines.append("  ...")
 
-        if len(result.hunks) > 5:
-            lines.append(f"\n... and {len(result.hunks) - 5} more hunks")
+        if len(result.hunks) > MAX_HUNKS_DISPLAY:
+            lines.append(
+                f"\n... and {len(result.hunks) - MAX_HUNKS_DISPLAY} more hunks"
+            )
 
         return ToolResultDisplay(
             success=True,

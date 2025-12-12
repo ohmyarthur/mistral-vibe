@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from vibe.core.tools.base import BaseToolState, ToolError
+from vibe.core.tools.base import ToolError
 from vibe.core.tools.builtins.view_file_outline import (
     ViewFileOutline,
     ViewFileOutlineArgs,
+    ViewFileOutlineState,
     ViewFileOutlineToolConfig,
 )
 
@@ -13,7 +14,7 @@ from vibe.core.tools.builtins.view_file_outline import (
 @pytest.fixture
 def outline_tool(tmp_path):
     config = ViewFileOutlineToolConfig(workdir=tmp_path)
-    return ViewFileOutline(config=config, state=BaseToolState())
+    return ViewFileOutline(config=config, state=ViewFileOutlineState())
 
 
 @pytest.fixture
@@ -54,7 +55,7 @@ class AdvancedCalc(Calculator):
 @pytest.mark.asyncio
 async def test_parses_python_file(tmp_path, python_file):
     config = ViewFileOutlineToolConfig(workdir=tmp_path)
-    tool = ViewFileOutline(config=config, state=BaseToolState())
+    tool = ViewFileOutline(config=config, state=ViewFileOutlineState())
 
     result = await tool.run(ViewFileOutlineArgs(path=str(python_file)))
 
@@ -66,7 +67,7 @@ async def test_parses_python_file(tmp_path, python_file):
 @pytest.mark.asyncio
 async def test_finds_functions(tmp_path, python_file):
     config = ViewFileOutlineToolConfig(workdir=tmp_path)
-    tool = ViewFileOutline(config=config, state=BaseToolState())
+    tool = ViewFileOutline(config=config, state=ViewFileOutlineState())
 
     result = await tool.run(ViewFileOutlineArgs(path=str(python_file)))
 
@@ -78,7 +79,7 @@ async def test_finds_functions(tmp_path, python_file):
 @pytest.mark.asyncio
 async def test_finds_classes(tmp_path, python_file):
     config = ViewFileOutlineToolConfig(workdir=tmp_path)
-    tool = ViewFileOutline(config=config, state=BaseToolState())
+    tool = ViewFileOutline(config=config, state=ViewFileOutlineState())
 
     result = await tool.run(ViewFileOutlineArgs(path=str(python_file)))
 
@@ -90,7 +91,7 @@ async def test_finds_classes(tmp_path, python_file):
 @pytest.mark.asyncio
 async def test_finds_methods(tmp_path, python_file):
     config = ViewFileOutlineToolConfig(workdir=tmp_path)
-    tool = ViewFileOutline(config=config, state=BaseToolState())
+    tool = ViewFileOutline(config=config, state=ViewFileOutlineState())
 
     result = await tool.run(ViewFileOutlineArgs(path=str(python_file)))
 
@@ -104,20 +105,23 @@ async def test_finds_methods(tmp_path, python_file):
 @pytest.mark.asyncio
 async def test_includes_signatures(tmp_path, python_file):
     config = ViewFileOutlineToolConfig(workdir=tmp_path)
-    tool = ViewFileOutline(config=config, state=BaseToolState())
+    tool = ViewFileOutline(config=config, state=ViewFileOutlineState())
 
     result = await tool.run(ViewFileOutlineArgs(path=str(python_file)))
 
-    hello_func = next(s for s in result.symbols if s.name == "hello")
-    assert "def hello(name: str) -> str" in hello_func.signature
+    next(s for s in result.symbols if s.name == "hello")
+    assert result.symbols[0].signature is not None
+    assert "def hello(name: str) -> str" in result.symbols[0].signature
 
 
 @pytest.mark.asyncio
 async def test_includes_docstrings(tmp_path, python_file):
     config = ViewFileOutlineToolConfig(workdir=tmp_path)
-    tool = ViewFileOutline(config=config, state=BaseToolState())
+    tool = ViewFileOutline(config=config, state=ViewFileOutlineState())
 
-    result = await tool.run(ViewFileOutlineArgs(path=str(python_file), include_docstrings=True))
+    result = await tool.run(
+        ViewFileOutlineArgs(path=str(python_file), include_docstrings=True)
+    )
 
     hello_func = next(s for s in result.symbols if s.name == "hello")
     assert hello_func.docstring == "Say hello."
@@ -126,7 +130,7 @@ async def test_includes_docstrings(tmp_path, python_file):
 @pytest.mark.asyncio
 async def test_includes_line_numbers(tmp_path, python_file):
     config = ViewFileOutlineToolConfig(workdir=tmp_path)
-    tool = ViewFileOutline(config=config, state=BaseToolState())
+    tool = ViewFileOutline(config=config, state=ViewFileOutlineState())
 
     result = await tool.run(ViewFileOutlineArgs(path=str(python_file)))
 
@@ -138,7 +142,7 @@ async def test_includes_line_numbers(tmp_path, python_file):
 @pytest.mark.asyncio
 async def test_respects_max_depth(tmp_path, python_file):
     config = ViewFileOutlineToolConfig(workdir=tmp_path)
-    tool = ViewFileOutline(config=config, state=BaseToolState())
+    tool = ViewFileOutline(config=config, state=ViewFileOutlineState())
 
     result = await tool.run(ViewFileOutlineArgs(path=str(python_file), max_depth=1))
 
@@ -149,7 +153,7 @@ async def test_respects_max_depth(tmp_path, python_file):
 @pytest.mark.asyncio
 async def test_generates_summary(tmp_path, python_file):
     config = ViewFileOutlineToolConfig(workdir=tmp_path)
-    tool = ViewFileOutline(config=config, state=BaseToolState())
+    tool = ViewFileOutline(config=config, state=ViewFileOutlineState())
 
     result = await tool.run(ViewFileOutlineArgs(path=str(python_file)))
 
@@ -168,7 +172,7 @@ async def test_raises_error_for_nonexistent_file(outline_tool):
 @pytest.mark.asyncio
 async def test_raises_error_for_directory(tmp_path):
     config = ViewFileOutlineToolConfig(workdir=tmp_path)
-    tool = ViewFileOutline(config=config, state=BaseToolState())
+    tool = ViewFileOutline(config=config, state=ViewFileOutlineState())
 
     with pytest.raises(ToolError) as err:
         await tool.run(ViewFileOutlineArgs(path=str(tmp_path)))
@@ -182,7 +186,7 @@ async def test_raises_error_for_syntax_error(tmp_path):
     bad_file.write_text("def broken(:\n    pass")
 
     config = ViewFileOutlineToolConfig(workdir=tmp_path)
-    tool = ViewFileOutline(config=config, state=BaseToolState())
+    tool = ViewFileOutline(config=config, state=ViewFileOutlineState())
 
     with pytest.raises(ToolError) as err:
         await tool.run(ViewFileOutlineArgs(path=str(bad_file)))
@@ -193,9 +197,10 @@ async def test_raises_error_for_syntax_error(tmp_path):
 @pytest.mark.asyncio
 async def test_handles_class_inheritance(tmp_path, python_file):
     config = ViewFileOutlineToolConfig(workdir=tmp_path)
-    tool = ViewFileOutline(config=config, state=BaseToolState())
+    tool = ViewFileOutline(config=config, state=ViewFileOutlineState())
 
     result = await tool.run(ViewFileOutlineArgs(path=str(python_file)))
 
     adv_class = next(s for s in result.symbols if s.name == "AdvancedCalc")
+    assert adv_class.signature is not None
     assert "Calculator" in adv_class.signature

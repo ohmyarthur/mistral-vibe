@@ -1,9 +1,8 @@
 from __future__ import annotations
 
+import fnmatch
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, final
-import fnmatch
-import os
 
 from pydantic import BaseModel, Field
 
@@ -29,23 +28,18 @@ class FileMatch(BaseModel):
 
 class FindByNameArgs(BaseModel):
     pattern: str = Field(
-        description="Glob pattern to match (e.g., '*.py', 'test_*.py', '*config*').",
+        description="Glob pattern to match (e.g., '*.py', 'test_*.py', '*config*')."
     )
     path: str = Field(
         default=".",
         description="Directory to search in. Defaults to current directory.",
     )
-    max_depth: int = Field(
-        default=10,
-        description="Maximum depth to recurse.",
-    )
+    max_depth: int = Field(default=10, description="Maximum depth to recurse.")
     file_type: str = Field(
-        default="any",
-        description="Filter by type: 'file', 'directory', or 'any'.",
+        default="any", description="Filter by type: 'file', 'directory', or 'any'."
     )
     include_hidden: bool = Field(
-        default=False,
-        description="Include hidden files/directories.",
+        default=False, description="Include hidden files/directories."
     )
 
 
@@ -60,8 +54,7 @@ class FindByNameResult(BaseModel):
 class FindByNameToolConfig(BaseToolConfig):
     permission: ToolPermission = ToolPermission.ALWAYS
     max_results: int = Field(
-        default=100,
-        description="Maximum number of matches to return.",
+        default=100, description="Maximum number of matches to return."
     )
     default_excludes: list[str] = Field(
         default_factory=lambda: [
@@ -82,6 +75,9 @@ class FindByNameState(BaseToolState):
     pass
 
 
+MAX_MATCHES_DISPLAY = 20
+
+
 class FindByName(
     BaseTool[FindByNameArgs, FindByNameResult, FindByNameToolConfig, FindByNameState],
     ToolUIData[FindByNameArgs, FindByNameResult],
@@ -94,7 +90,7 @@ class FindByName(
     @final
     async def run(self, args: FindByNameArgs) -> FindByNameResult:
         search_path = self._prepare_and_validate_path(args)
-        matches, was_truncated = self._find_files(
+        matches, was_truncated = await self._find_files(
             search_path,
             args.pattern,
             args.max_depth,
@@ -133,7 +129,26 @@ class FindByName(
                 return True
         return False
 
-    def _find_files(
+    async def _find_files(
+        self,
+        search_path: Path,
+        pattern: str,
+        max_depth: int,
+        file_type: str,
+        include_hidden: bool,
+    ) -> tuple[list[FileMatch], bool]:
+        import asyncio
+
+        return await asyncio.to_thread(
+            self._find_files_sync,
+            search_path,
+            pattern,
+            max_depth,
+            file_type,
+            include_hidden,
+        )
+
+    def _find_files_sync(
         self,
         search_path: Path,
         pattern: str,
@@ -154,7 +169,9 @@ class FindByName(
                 return False
 
             try:
-                for item in sorted(current_path.iterdir(), key=lambda x: x.name.lower()):
+                for item in sorted(
+                    current_path.iterdir(), key=lambda x: x.name.lower()
+                ):
                     if len(matches) >= self.config.max_results:
                         was_truncated = True
                         return False
@@ -182,10 +199,7 @@ class FindByName(
                         rel_path = str(item.relative_to(self.config.effective_workdir))
                         matches.append(
                             FileMatch(
-                                path=rel_path,
-                                name=item.name,
-                                is_dir=is_dir,
-                                size=size,
+                                path=rel_path, name=item.name, is_dir=is_dir, size=size
                             )
                         )
 
@@ -231,12 +245,14 @@ class FindByName(
             message += " (truncated)"
 
         formatted_matches = []
-        for match in result.matches[:20]:
+        for match in result.matches[:MAX_MATCHES_DISPLAY]:
             icon = "📁" if match.is_dir else "📄"
             formatted_matches.append(f"{icon} {match.path}")
 
-        if len(result.matches) > 20:
-            formatted_matches.append(f"... and {len(result.matches) - 20} more")
+        if len(result.matches) > MAX_MATCHES_DISPLAY:
+            formatted_matches.append(
+                f"... and {len(result.matches) - MAX_MATCHES_DISPLAY} more"
+            )
 
         return ToolResultDisplay(
             success=True,

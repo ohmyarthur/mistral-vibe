@@ -197,8 +197,10 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                     sys.exit(1)
 
             try:
-                loaded_messages, metadata = InteractionLogger.load_session(
-                    session_to_load
+                import asyncio
+
+                loaded_messages, metadata = asyncio.run(
+                    InteractionLogger.load_session(session_to_load)
                 )
                 session_id = metadata.get("session_id", "unknown")[:8]
                 session_time = metadata.get("start_time", "unknown time")

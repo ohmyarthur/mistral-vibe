@@ -27,19 +27,20 @@ class FileDiff(BaseModel):
     diff_preview: str = ""
 
 
+MAX_PREVIEW_FILES = 5
+MAX_CHANGES_FOR_FIX = 20
+MIN_SPLIT_PARTS = 2
+
+
 class CommitSuggestionArgs(BaseModel):
     include_body: bool = Field(
-        default=True,
-        description="Include detailed commit body with bullet points.",
+        default=True, description="Include detailed commit body with bullet points."
     )
     style: str = Field(
         default="conventional",
         description="Commit style: 'conventional' (feat/fix/etc), 'simple', or 'detailed'.",
     )
-    max_files: int = Field(
-        default=20,
-        description="Maximum files to analyze.",
-    )
+    max_files: int = Field(default=20, description="Maximum files to analyze.")
 
 
 class CommitSuggestionResult(BaseModel):
@@ -121,7 +122,8 @@ class CommitSuggestion(
 
     async def _run_git(self, workdir: Path, *args: str) -> tuple[str, int]:
         proc = await asyncio.create_subprocess_exec(
-            "git", *args,
+            "git",
+            *args,
             cwd=workdir,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -137,15 +139,13 @@ class CommitSuggestion(
         out, _ = await self._run_git(workdir, "diff", "--cached", "--name-status")
         files: list[FileDiff] = []
 
-        status_map = {
-            "A": "added", "M": "modified", "D": "deleted", "R": "renamed"
-        }
+        status_map = {"A": "added", "M": "modified", "D": "deleted", "R": "renamed"}
 
         for line in out.splitlines()[:max_files]:
             if not line:
                 continue
             parts = line.split("\t", 1)
-            if len(parts) >= 2:
+            if len(parts) >= MIN_SPLIT_PARTS:
                 status_char = parts[0][0]
                 path = parts[1]
 
@@ -155,7 +155,7 @@ class CommitSuggestion(
                 additions = deletions = 0
                 if numstat:
                     nums = numstat.split()
-                    if len(nums) >= 2:
+                    if len(nums) >= MIN_SPLIT_PARTS:
                         additions = int(nums[0]) if nums[0].isdigit() else 0
                         deletions = int(nums[1]) if nums[1].isdigit() else 0
 
@@ -164,13 +164,15 @@ class CommitSuggestion(
                 )
                 diff_preview = diff_preview[:500] if diff_preview else ""
 
-                files.append(FileDiff(
-                    path=path,
-                    status=status_map.get(status_char, "modified"),
-                    additions=additions,
-                    deletions=deletions,
-                    diff_preview=diff_preview,
-                ))
+                files.append(
+                    FileDiff(
+                        path=path,
+                        status=status_map.get(status_char, "modified"),
+                        additions=additions,
+                        deletions=deletions,
+                        diff_preview=diff_preview,
+                    )
+                )
 
         return files
 
@@ -201,12 +203,9 @@ class CommitSuggestion(
             return "fix"
 
         total_changes = sum(f.additions + f.deletions for f in files)
-        if total_changes < 20:
-            return "fix"
+        return "fix" if total_changes < MAX_CHANGES_FOR_FIX else "feat"
 
-        return "feat"
-
-    def _generate_title(
+    def _generate_title(  # noqa: PLR0911
         self, files: list[FileDiff], commit_type: str, style: str
     ) -> str:
         if len(files) == 1:
@@ -251,17 +250,17 @@ class CommitSuggestion(
 
         if added:
             lines.append("Added:")
-            for f in added[:5]:
+            for f in added[:MAX_PREVIEW_FILES]:
                 lines.append(f"  - {f.path}")
-            if len(added) > 5:
-                lines.append(f"  - ... and {len(added) - 5} more")
+            if len(added) > MAX_PREVIEW_FILES:
+                lines.append(f"  - ... and {len(added) - MAX_PREVIEW_FILES} more")
 
         if modified:
             lines.append("\nModified:")
-            for f in modified[:5]:
+            for f in modified[:MAX_PREVIEW_FILES]:
                 lines.append(f"  - {f.path} (+{f.additions}/-{f.deletions})")
-            if len(modified) > 5:
-                lines.append(f"  - ... and {len(modified) - 5} more")
+            if len(modified) > MAX_PREVIEW_FILES:
+                lines.append(f"  - ... and {len(modified) - MAX_PREVIEW_FILES} more")
 
         if deleted:
             lines.append("\nDeleted:")
@@ -285,11 +284,7 @@ class CommitSuggestion(
         if not result.has_changes:
             return ToolResultDisplay(success=True, message=result.title)
 
-        lines = [
-            "📝 Suggested commit message:",
-            "",
-            f"  {result.title}",
-        ]
+        lines = ["📝 Suggested commit message:", "", f"  {result.title}"]
 
         if result.body:
             lines.append("")

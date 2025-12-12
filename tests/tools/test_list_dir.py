@@ -2,14 +2,19 @@ from __future__ import annotations
 
 import pytest
 
-from vibe.core.tools.base import BaseToolState, ToolError
-from vibe.core.tools.builtins.list_dir import ListDir, ListDirArgs, ListDirToolConfig
+from vibe.core.tools.base import ToolError
+from vibe.core.tools.builtins.list_dir import (
+    ListDir,
+    ListDirArgs,
+    ListDirState,
+    ListDirToolConfig,
+)
 
 
 @pytest.fixture
 def list_dir_tool(tmp_path):
     config = ListDirToolConfig(workdir=tmp_path)
-    return ListDir(config=config, state=BaseToolState())
+    return ListDir(config=config, state=ListDirState())
 
 
 @pytest.fixture
@@ -36,7 +41,7 @@ async def test_lists_empty_directory(list_dir_tool, tmp_path):
 @pytest.mark.asyncio
 async def test_lists_files_and_directories(tmp_path, populated_dir):
     config = ListDirToolConfig(workdir=tmp_path)
-    tool = ListDir(config=config, state=BaseToolState())
+    tool = ListDir(config=config, state=ListDirState())
 
     result = await tool.run(ListDirArgs(path=str(populated_dir)))
 
@@ -52,7 +57,7 @@ async def test_lists_files_and_directories(tmp_path, populated_dir):
 @pytest.mark.asyncio
 async def test_includes_hidden_files_when_requested(tmp_path, populated_dir):
     config = ListDirToolConfig(workdir=tmp_path)
-    tool = ListDir(config=config, state=BaseToolState())
+    tool = ListDir(config=config, state=ListDirState())
 
     result = await tool.run(ListDirArgs(path=str(populated_dir), include_hidden=True))
 
@@ -63,7 +68,7 @@ async def test_includes_hidden_files_when_requested(tmp_path, populated_dir):
 @pytest.mark.asyncio
 async def test_shows_file_sizes(tmp_path, populated_dir):
     config = ListDirToolConfig(workdir=tmp_path)
-    tool = ListDir(config=config, state=BaseToolState())
+    tool = ListDir(config=config, state=ListDirState())
 
     result = await tool.run(ListDirArgs(path=str(populated_dir)))
 
@@ -75,7 +80,7 @@ async def test_shows_file_sizes(tmp_path, populated_dir):
 @pytest.mark.asyncio
 async def test_shows_directory_children_count(tmp_path, populated_dir):
     config = ListDirToolConfig(workdir=tmp_path)
-    tool = ListDir(config=config, state=BaseToolState())
+    tool = ListDir(config=config, state=ListDirState())
 
     result = await tool.run(ListDirArgs(path=str(populated_dir)))
 
@@ -95,7 +100,7 @@ async def test_raises_error_for_nonexistent_directory(list_dir_tool):
 @pytest.mark.asyncio
 async def test_raises_error_for_file_path(tmp_path, populated_dir):
     config = ListDirToolConfig(workdir=tmp_path)
-    tool = ListDir(config=config, state=BaseToolState())
+    tool = ListDir(config=config, state=ListDirState())
 
     with pytest.raises(ToolError) as err:
         await tool.run(ListDirArgs(path=str(populated_dir / "file1.txt")))
@@ -109,7 +114,7 @@ async def test_truncates_when_exceeds_max_entries(tmp_path):
         (tmp_path / f"file{i}.txt").write_text(f"content {i}")
 
     config = ListDirToolConfig(workdir=tmp_path, max_entries=5)
-    tool = ListDir(config=config, state=BaseToolState())
+    tool = ListDir(config=config, state=ListDirState())
 
     result = await tool.run(ListDirArgs(path=str(tmp_path)))
 
@@ -120,7 +125,7 @@ async def test_truncates_when_exceeds_max_entries(tmp_path):
 @pytest.mark.asyncio
 async def test_sorts_directories_first(tmp_path, populated_dir):
     config = ListDirToolConfig(workdir=tmp_path)
-    tool = ListDir(config=config, state=BaseToolState())
+    tool = ListDir(config=config, state=ListDirState())
 
     result = await tool.run(ListDirArgs(path=str(populated_dir)))
 
@@ -133,10 +138,7 @@ def test_get_call_display():
 
     args = ListDirArgs(path="/some/path", include_hidden=True)
     event = ToolCallEvent(
-        tool_call_id="test",
-        tool_name="list_dir",
-        tool_class=ListDir,
-        args=args,
+        tool_call_id="test", tool_name="list_dir", tool_class=ListDir, args=args
     )
 
     display = ListDir.get_call_display(event)

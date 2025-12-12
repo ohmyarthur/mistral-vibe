@@ -6,13 +6,7 @@ from typing import TYPE_CHECKING, ClassVar, final
 
 from pydantic import BaseModel, Field
 
-from vibe.core.tools.base import (
-    BaseTool,
-    BaseToolConfig,
-    BaseToolState,
-    ToolError,
-    ToolPermission,
-)
+from vibe.core.tools.base import BaseTool, BaseToolConfig, BaseToolState, ToolPermission
 from vibe.core.tools.ui import ToolCallDisplay, ToolResultDisplay, ToolUIData
 
 if TYPE_CHECKING:
@@ -27,13 +21,9 @@ class GitFileStatus(BaseModel):
 
 class GitStatusArgs(BaseModel):
     include_untracked: bool = Field(
-        default=True,
-        description="Include untracked files in output.",
+        default=True, description="Include untracked files in output."
     )
-    show_stash: bool = Field(
-        default=False,
-        description="Show stash entries.",
-    )
+    show_stash: bool = Field(default=False, description="Show stash entries.")
 
 
 class GitStatusResult(BaseModel):
@@ -58,6 +48,11 @@ class GitStatusState(BaseToolState):
     pass
 
 
+MAX_STATUS_DISPLAY = 10
+MAX_UNTRACKED_DISPLAY = 5
+MIN_SPLIT_PARTS = 2
+
+
 class GitStatus(
     BaseTool[GitStatusArgs, GitStatusResult, GitStatusToolConfig, GitStatusState],
     ToolUIData[GitStatusArgs, GitStatusResult],
@@ -73,23 +68,24 @@ class GitStatus(
 
         is_git = await self._is_git_repo(workdir)
         if not is_git:
-            return GitStatusResult(
-                is_git_repo=False,
-                summary="Not a git repository",
-            )
+            return GitStatusResult(is_git_repo=False, summary="Not a git repository")
 
         branch, ahead, behind = await self._get_branch_info(workdir)
         staged = await self._get_staged_files(workdir)
         unstaged = await self._get_unstaged_files(workdir)
-        untracked = await self._get_untracked_files(workdir) if args.include_untracked else []
+        untracked = (
+            await self._get_untracked_files(workdir) if args.include_untracked else []
+        )
         stash_count = await self._get_stash_count(workdir) if args.show_stash else 0
         has_conflicts = await self._has_conflicts(workdir)
 
-        staged = staged[:self.config.max_files]
-        unstaged = unstaged[:self.config.max_files]
-        untracked = untracked[:self.config.max_files]
+        staged = staged[: self.config.max_files]
+        unstaged = unstaged[: self.config.max_files]
+        untracked = untracked[: self.config.max_files]
 
-        summary = self._generate_summary(branch, staged, unstaged, untracked, ahead, behind)
+        summary = self._generate_summary(
+            branch, staged, unstaged, untracked, ahead, behind
+        )
 
         return GitStatusResult(
             is_git_repo=True,
@@ -106,7 +102,8 @@ class GitStatus(
 
     async def _run_git(self, workdir: Path, *args: str) -> tuple[str, int]:
         proc = await asyncio.create_subprocess_exec(
-            "git", *args,
+            "git",
+            *args,
             cwd=workdir,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -125,7 +122,11 @@ class GitStatus(
         ahead, behind = 0, 0
         if branch:
             status_out, _ = await self._run_git(
-                workdir, "rev-list", "--left-right", "--count", f"{branch}@{{upstream}}...HEAD"
+                workdir,
+                "rev-list",
+                "--left-right",
+                "--count",
+                f"{branch}@{{upstream}}...HEAD",
             )
             if status_out and "\t" in status_out:
                 parts = status_out.split("\t")
@@ -143,7 +144,9 @@ class GitStatus(
         return self._parse_status_output(out, staged=False)
 
     async def _get_untracked_files(self, workdir: Path) -> list[str]:
-        out, _ = await self._run_git(workdir, "ls-files", "--others", "--exclude-standard")
+        out, _ = await self._run_git(
+            workdir, "ls-files", "--others", "--exclude-standard"
+        )
         return [f for f in out.splitlines() if f]
 
     async def _get_stash_count(self, workdir: Path) -> int:
@@ -168,13 +171,15 @@ class GitStatus(
             if not line:
                 continue
             parts = line.split("\t", 1)
-            if len(parts) >= 2:
+            if len(parts) >= MIN_SPLIT_PARTS:
                 status_char = parts[0][0] if parts[0] else "M"
-                files.append(GitFileStatus(
-                    path=parts[1],
-                    status=status_map.get(status_char, "unknown"),
-                    staged=staged,
-                ))
+                files.append(
+                    GitFileStatus(
+                        path=parts[1],
+                        status=status_map.get(status_char, "unknown"),
+                        staged=staged,
+                    )
+                )
         return files
 
     def _generate_summary(
@@ -231,31 +236,39 @@ class GitStatus(
 
         if result.staged:
             lines.append("\n📦 Staged:")
-            for f in result.staged[:10]:
-                icon = {"added": "➕", "deleted": "➖", "modified": "✏️"}.get(f.status, "•")
+            for f in result.staged[:MAX_STATUS_DISPLAY]:
+                icon = {"added": "➕", "deleted": "➖", "modified": "✏️"}.get(
+                    f.status, "•"
+                )
                 lines.append(f"  {icon} {f.path}")
-            if len(result.staged) > 10:
-                lines.append(f"  ... and {len(result.staged) - 10} more")
+            if len(result.staged) > MAX_STATUS_DISPLAY:
+                lines.append(
+                    f"  ... and {len(result.staged) - MAX_STATUS_DISPLAY} more"
+                )
 
         if result.unstaged:
             lines.append("\n📝 Unstaged:")
-            for f in result.unstaged[:10]:
-                icon = {"added": "➕", "deleted": "➖", "modified": "✏️"}.get(f.status, "•")
+            for f in result.unstaged[:MAX_STATUS_DISPLAY]:
+                icon = {"added": "➕", "deleted": "➖", "modified": "✏️"}.get(
+                    f.status, "•"
+                )
                 lines.append(f"  {icon} {f.path}")
-            if len(result.unstaged) > 10:
-                lines.append(f"  ... and {len(result.unstaged) - 10} more")
+            if len(result.unstaged) > MAX_STATUS_DISPLAY:
+                lines.append(
+                    f"  ... and {len(result.unstaged) - MAX_STATUS_DISPLAY} more"
+                )
 
         if result.untracked:
             lines.append("\n❓ Untracked:")
-            for f in result.untracked[:5]:
+            for f in result.untracked[:MAX_UNTRACKED_DISPLAY]:
                 lines.append(f"  • {f}")
-            if len(result.untracked) > 5:
-                lines.append(f"  ... and {len(result.untracked) - 5} more")
+            if len(result.untracked) > MAX_UNTRACKED_DISPLAY:
+                lines.append(
+                    f"  ... and {len(result.untracked) - MAX_UNTRACKED_DISPLAY} more"
+                )
 
         return ToolResultDisplay(
-            success=True,
-            message=result.summary,
-            details={"output": "\n".join(lines)},
+            success=True, message=result.summary, details={"output": "\n".join(lines)}
         )
 
     @classmethod

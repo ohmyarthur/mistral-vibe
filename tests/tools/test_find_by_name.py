@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from vibe.core.tools.base import BaseToolState, ToolError
+from vibe.core.tools.base import ToolError
 from vibe.core.tools.builtins.find_by_name import (
     FindByName,
     FindByNameArgs,
+    FindByNameState,
     FindByNameToolConfig,
 )
 
@@ -13,7 +14,7 @@ from vibe.core.tools.builtins.find_by_name import (
 @pytest.fixture
 def find_tool(tmp_path):
     config = FindByNameToolConfig(workdir=tmp_path)
-    return FindByName(config=config, state=BaseToolState())
+    return FindByName(config=config, state=FindByNameState())
 
 
 @pytest.fixture
@@ -44,7 +45,7 @@ def project_structure(tmp_path):
 @pytest.mark.asyncio
 async def test_finds_python_files(tmp_path, project_structure):
     config = FindByNameToolConfig(workdir=tmp_path)
-    tool = FindByName(config=config, state=BaseToolState())
+    tool = FindByName(config=config, state=FindByNameState())
 
     result = await tool.run(FindByNameArgs(pattern="*.py", path=str(project_structure)))
 
@@ -58,9 +59,11 @@ async def test_finds_python_files(tmp_path, project_structure):
 @pytest.mark.asyncio
 async def test_finds_test_files(tmp_path, project_structure):
     config = FindByNameToolConfig(workdir=tmp_path)
-    tool = FindByName(config=config, state=BaseToolState())
+    tool = FindByName(config=config, state=FindByNameState())
 
-    result = await tool.run(FindByNameArgs(pattern="test_*.py", path=str(project_structure)))
+    result = await tool.run(
+        FindByNameArgs(pattern="test_*.py", path=str(project_structure))
+    )
 
     names = [m.name for m in result.matches]
     assert "test_main.py" in names
@@ -71,7 +74,7 @@ async def test_finds_test_files(tmp_path, project_structure):
 @pytest.mark.asyncio
 async def test_excludes_git_directory(tmp_path, project_structure):
     config = FindByNameToolConfig(workdir=tmp_path)
-    tool = FindByName(config=config, state=BaseToolState())
+    tool = FindByName(config=config, state=FindByNameState())
 
     result = await tool.run(FindByNameArgs(pattern="*", path=str(project_structure)))
 
@@ -82,7 +85,7 @@ async def test_excludes_git_directory(tmp_path, project_structure):
 @pytest.mark.asyncio
 async def test_excludes_hidden_files_by_default(tmp_path, project_structure):
     config = FindByNameToolConfig(workdir=tmp_path)
-    tool = FindByName(config=config, state=BaseToolState())
+    tool = FindByName(config=config, state=FindByNameState())
 
     result = await tool.run(FindByNameArgs(pattern="*.py", path=str(project_structure)))
 
@@ -93,7 +96,7 @@ async def test_excludes_hidden_files_by_default(tmp_path, project_structure):
 @pytest.mark.asyncio
 async def test_includes_hidden_files_when_requested(tmp_path, project_structure):
     config = FindByNameToolConfig(workdir=tmp_path)
-    tool = FindByName(config=config, state=BaseToolState())
+    tool = FindByName(config=config, state=FindByNameState())
 
     result = await tool.run(
         FindByNameArgs(pattern="*.py", path=str(project_structure), include_hidden=True)
@@ -106,7 +109,7 @@ async def test_includes_hidden_files_when_requested(tmp_path, project_structure)
 @pytest.mark.asyncio
 async def test_filters_by_file_type(tmp_path, project_structure):
     config = FindByNameToolConfig(workdir=tmp_path)
-    tool = FindByName(config=config, state=BaseToolState())
+    tool = FindByName(config=config, state=FindByNameState())
 
     result = await tool.run(
         FindByNameArgs(pattern="*", path=str(project_structure), file_type="directory")
@@ -121,7 +124,7 @@ async def test_filters_by_file_type(tmp_path, project_structure):
 @pytest.mark.asyncio
 async def test_filters_files_only(tmp_path, project_structure):
     config = FindByNameToolConfig(workdir=tmp_path)
-    tool = FindByName(config=config, state=BaseToolState())
+    tool = FindByName(config=config, state=FindByNameState())
 
     result = await tool.run(
         FindByNameArgs(pattern="*", path=str(project_structure), file_type="file")
@@ -133,7 +136,7 @@ async def test_filters_files_only(tmp_path, project_structure):
 @pytest.mark.asyncio
 async def test_respects_max_depth(tmp_path, project_structure):
     config = FindByNameToolConfig(workdir=tmp_path)
-    tool = FindByName(config=config, state=BaseToolState())
+    tool = FindByName(config=config, state=FindByNameState())
 
     result = await tool.run(
         FindByNameArgs(pattern="*.py", path=str(project_structure), max_depth=0)
@@ -150,7 +153,7 @@ async def test_truncates_when_exceeds_max_results(tmp_path):
         (tmp_path / f"file{i}.py").write_text(f"print({i})")
 
     config = FindByNameToolConfig(workdir=tmp_path, max_results=5)
-    tool = FindByName(config=config, state=BaseToolState())
+    tool = FindByName(config=config, state=FindByNameState())
 
     result = await tool.run(FindByNameArgs(pattern="*.py", path=str(tmp_path)))
 
@@ -169,10 +172,12 @@ async def test_raises_error_for_nonexistent_path(find_tool):
 @pytest.mark.asyncio
 async def test_raises_error_for_file_path(tmp_path, project_structure):
     config = FindByNameToolConfig(workdir=tmp_path)
-    tool = FindByName(config=config, state=BaseToolState())
+    tool = FindByName(config=config, state=FindByNameState())
 
     with pytest.raises(ToolError) as err:
-        await tool.run(FindByNameArgs(pattern="*.py", path=str(project_structure / "main.py")))
+        await tool.run(
+            FindByNameArgs(pattern="*.py", path=str(project_structure / "main.py"))
+        )
 
     assert "not a directory" in str(err.value).lower()
 
@@ -180,9 +185,11 @@ async def test_raises_error_for_file_path(tmp_path, project_structure):
 @pytest.mark.asyncio
 async def test_returns_relative_paths(tmp_path, project_structure):
     config = FindByNameToolConfig(workdir=project_structure)
-    tool = FindByName(config=config, state=BaseToolState())
+    tool = FindByName(config=config, state=FindByNameState())
 
-    result = await tool.run(FindByNameArgs(pattern="app.py", path=str(project_structure)))
+    result = await tool.run(
+        FindByNameArgs(pattern="app.py", path=str(project_structure))
+    )
 
     assert len(result.matches) == 1
     assert result.matches[0].path == "src/app.py"
@@ -191,9 +198,11 @@ async def test_returns_relative_paths(tmp_path, project_structure):
 @pytest.mark.asyncio
 async def test_includes_file_sizes(tmp_path, project_structure):
     config = FindByNameToolConfig(workdir=tmp_path)
-    tool = FindByName(config=config, state=BaseToolState())
+    tool = FindByName(config=config, state=FindByNameState())
 
-    result = await tool.run(FindByNameArgs(pattern="README.md", path=str(project_structure)))
+    result = await tool.run(
+        FindByNameArgs(pattern="README.md", path=str(project_structure))
+    )
 
     assert len(result.matches) == 1
     assert result.matches[0].size == 8
@@ -204,10 +213,7 @@ def test_get_call_display():
 
     args = FindByNameArgs(pattern="*.py", path="/some/path")
     event = ToolCallEvent(
-        tool_call_id="test",
-        tool_name="find_by_name",
-        tool_class=FindByName,
-        args=args,
+        tool_call_id="test", tool_name="find_by_name", tool_class=FindByName, args=args
     )
 
     display = FindByName.get_call_display(event)

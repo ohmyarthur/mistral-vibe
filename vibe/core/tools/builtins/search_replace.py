@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import difflib
 from pathlib import Path
 import re
 import shutil
@@ -7,11 +8,11 @@ from typing import ClassVar, NamedTuple, final
 
 try:
     from rapidfuzz import fuzz
-    from rapidfuzz.distance import Levenshtein
+
     HAS_RAPIDFUZZ = True
 except ImportError:
-    import difflib
     HAS_RAPIDFUZZ = False
+    fuzz = None
 
 try:
     import aerofs as aiofiles
@@ -353,10 +354,14 @@ class SearchReplace(
                         break
 
                 if matches:
-                    matched_lines = content_lines[content_idx:content_idx + len(search_lines)]
+                    matched_lines = content_lines[
+                        content_idx : content_idx + len(search_lines)
+                    ]
                     matched_text = "\n".join(matched_lines)
 
-                    start_idx = sum(len(line) + 1 for line in content_lines[:content_idx])
+                    start_idx = sum(
+                        len(line) + 1 for line in content_lines[:content_idx]
+                    )
                     end_idx = start_idx + len(matched_text)
 
                     return (matched_text, start_idx, end_idx)
@@ -376,11 +381,11 @@ class SearchReplace(
             return replace
 
         def get_leading_whitespace(s: str) -> str:
-            return s[:len(s) - len(s.lstrip())]
+            return s[: len(s) - len(s.lstrip())]
 
         search_indent = ""
         actual_indent = ""
-        for s_line, a_line in zip(search_lines, actual_lines):
+        for s_line, a_line in zip(search_lines, actual_lines, strict=False):
             if s_line.strip():
                 search_indent = get_leading_whitespace(s_line)
                 actual_indent = get_leading_whitespace(a_line)
@@ -391,7 +396,7 @@ class SearchReplace(
             r_indent = get_leading_whitespace(r_line)
             if r_line.strip():
                 if search_indent and r_indent.startswith(search_indent):
-                    relative_indent = r_indent[len(search_indent):]
+                    relative_indent = r_indent[len(search_indent) :]
                     new_line = actual_indent + relative_indent + r_line.lstrip()
                 elif not search_indent:
                     new_line = actual_indent + r_line
@@ -470,9 +475,11 @@ class SearchReplace(
             window_text = "\n".join(content_lines[start:end])
 
             if HAS_RAPIDFUZZ:
+                assert fuzz is not None
                 similarity = fuzz.ratio(search_text, window_text) / 100.0
             else:
                 import difflib
+
                 matcher = difflib.SequenceMatcher(None, search_text, window_text)
                 similarity = matcher.ratio()
 

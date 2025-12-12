@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, final
-import os
 
 try:
     import aerofs
+
     HAS_AEROFS = True
 except ImportError:
     HAS_AEROFS = False
@@ -42,8 +43,7 @@ class ListDirArgs(BaseModel):
         description="Maximum depth to recurse (1 = no recursion, just immediate children).",
     )
     include_hidden: bool = Field(
-        default=False,
-        description="Include hidden files (starting with dot).",
+        default=False, description="Include hidden files (starting with dot)."
     )
 
 
@@ -58,8 +58,7 @@ class ListDirResult(BaseModel):
 class ListDirToolConfig(BaseToolConfig):
     permission: ToolPermission = ToolPermission.ALWAYS
     max_entries: int = Field(
-        default=200,
-        description="Maximum number of entries to return.",
+        default=200, description="Maximum number of entries to return."
     )
 
 
@@ -118,9 +117,11 @@ class ListDir(
 
         try:
             if HAS_AEROFS:
-                items = await aerofs.os.listdir(str(dir_path))
+                items = await aerofs.os.listdir(str(dir_path))  # type: ignore
             else:
-                items = os.listdir(dir_path)
+                import asyncio
+
+                items = await asyncio.to_thread(os.listdir, dir_path)
 
             items.sort(key=lambda x: (not Path(dir_path / x).is_dir(), x.lower()))
 
@@ -179,7 +180,9 @@ class ListDir(
         formatted_entries = []
         for entry in result.entries:
             if entry.is_dir:
-                formatted_entries.append(f"📁 {entry.name}/ ({entry.children_count} items)")
+                formatted_entries.append(
+                    f"📁 {entry.name}/ ({entry.children_count} items)"
+                )
             else:
                 size_str = cls._format_size(entry.size or 0)
                 formatted_entries.append(f"📄 {entry.name} ({size_str})")
@@ -197,11 +200,13 @@ class ListDir(
 
     @staticmethod
     def _format_size(size: int) -> str:
+        size_f = float(size)
+        kb = 1024
         for unit in ["B", "KB", "MB", "GB"]:
-            if size < 1024:
-                return f"{size:.1f}{unit}" if unit != "B" else f"{size}{unit}"
-            size /= 1024
-        return f"{size:.1f}TB"
+            if size_f < kb:
+                return f"{size_f:.1f}{unit}" if unit != "B" else f"{size_f}{unit}"
+            size_f /= kb
+        return f"{size_f:.1f}TB"
 
     @classmethod
     def get_status_text(cls) -> str:

@@ -1,18 +1,19 @@
 from __future__ import annotations
 
-import asyncio
-import hashlib
-import re
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
+import hashlib
 from pathlib import Path
+import re
 from typing import TYPE_CHECKING, ClassVar, Literal, final
 
 try:
     from rapidfuzz import fuzz
+
     HAS_RAPIDFUZZ = True
 except ImportError:
     HAS_RAPIDFUZZ = False
+    fuzz = None
 
 try:
     import aerofs as aiofiles
@@ -21,19 +22,14 @@ except ImportError:
 
 from pydantic import BaseModel, Field
 
-from vibe.core.tools.base import (
-    BaseTool,
-    BaseToolConfig,
-    BaseToolState,
-    ToolError,
-    ToolPermission,
-)
+from vibe.core.tools.base import BaseTool, BaseToolConfig, BaseToolState, ToolPermission
 from vibe.core.tools.ui import ToolCallDisplay, ToolResultDisplay, ToolUIData
 
 if TYPE_CHECKING:
     from vibe.core.types import ToolCallEvent, ToolResultEvent
 
-class MatchTier(str, Enum):
+
+class MatchTier(StrEnum):
     EXACT = "exact"
     NORMALIZED = "normalized"
     ANCHORED = "anchored"
@@ -47,20 +43,16 @@ class EditBlock(BaseModel):
     replace: str = Field(description="Replacement text.")
 
     context_before: str | None = Field(
-        default=None,
-        description="Lines before the search text for anchoring.",
+        default=None, description="Lines before the search text for anchoring."
     )
     context_after: str | None = Field(
-        default=None,
-        description="Lines after the search text for anchoring.",
+        default=None, description="Lines after the search text for anchoring."
     )
     line_start: int | None = Field(
-        default=None,
-        description="Start of search range (1-indexed).",
+        default=None, description="Start of search range (1-indexed)."
     )
     line_end: int | None = Field(
-        default=None,
-        description="End of search range (1-indexed).",
+        default=None, description="End of search range (1-indexed)."
     )
 
 
@@ -68,8 +60,7 @@ class FileEdit(BaseModel):
     path: str = Field(description="Path to the file to edit.")
     edits: list[EditBlock] = Field(description="Edits to apply in order.")
     expected_hash: str | None = Field(
-        default=None,
-        description="MD5 hash of file content when edit was planned.",
+        default=None, description="MD5 hash of file content when edit was planned."
     )
 
 
@@ -107,24 +98,19 @@ class MultiEditArgs(BaseModel):
     files: list[FileEdit] = Field(description="Files and their edits.")
 
     dry_run: bool = Field(
-        default=True,
-        description="Preview only, don't apply changes.",
+        default=True, description="Preview only, don't apply changes."
     )
     check_only: bool = Field(
-        default=False,
-        description="Validate matches without generating diff.",
+        default=False, description="Validate matches without generating diff."
     )
     create_backup: bool = Field(
-        default=True,
-        description="Create .bak files before modifying.",
+        default=True, description="Create .bak files before modifying."
     )
     fail_fast: bool = Field(
-        default=True,
-        description="Stop on first error (recommended for safety).",
+        default=True, description="Stop on first error (recommended for safety)."
     )
     min_confidence: float = Field(
-        default=0.85,
-        description="Minimum confidence threshold for applying edits.",
+        default=0.85, description="Minimum confidence threshold for applying edits."
     )
 
 
@@ -158,10 +144,7 @@ class MatchContext:
 class MatchingEngine:
     @classmethod
     def match(
-        cls,
-        content: str,
-        edit: EditBlock,
-        min_confidence: float = 0.85,
+        cls, content: str, edit: EditBlock, min_confidence: float = 0.85
     ) -> MatchResult:
         ctx = MatchContext(
             content=content,
@@ -221,7 +204,7 @@ class MatchingEngine:
 
                 if match_found:
                     start = sum(len(l) for l in ctx.lines[:i])
-                    end = sum(len(l) for l in ctx.lines[:i + len(search_lines)])
+                    end = sum(len(l) for l in ctx.lines[: i + len(search_lines)])
 
                     return MatchResult(
                         success=True,
@@ -243,7 +226,7 @@ class MatchingEngine:
         if edit.context_after:
             pattern_parts.append(re.escape(edit.context_after.strip()))
 
-        pattern = r'\s*'.join(pattern_parts)
+        pattern = r"\s*".join(pattern_parts)
 
         match = re.search(pattern, ctx.content, re.MULTILINE | re.DOTALL)
         if match:
@@ -270,11 +253,11 @@ class MatchingEngine:
                 success=False,
                 tier=MatchTier.LINE_RANGE,
                 confidence=0.0,
-                warning=f"Line range {start_line+1}-{end_line} out of bounds",
+                warning=f"Line range {start_line + 1}-{end_line} out of bounds",
             )
 
         range_lines = ctx.lines[start_line:end_line]
-        range_content = ''.join(range_lines)
+        range_content = "".join(range_lines)
 
         idx = range_content.find(edit.search)
         if idx != -1:
@@ -285,7 +268,7 @@ class MatchingEngine:
                 confidence=0.85,
                 match_start=offset + idx,
                 match_end=offset + idx + len(edit.search),
-                warning=f"Matched in line range {start_line+1}-{end_line}",
+                warning=f"Matched in line range {start_line + 1}-{end_line}",
             )
 
         return MatchResult(success=False, tier=MatchTier.LINE_RANGE, confidence=0.0)
@@ -299,6 +282,7 @@ class MatchingEngine:
                 confidence=0.0,
                 warning="Fuzzy matching unavailable (rapidfuzz not installed)",
             )
+        assert fuzz is not None
 
         best_score = 0.0
         best_match = ""
@@ -307,7 +291,7 @@ class MatchingEngine:
         search_len = len(edit.search)
 
         for i in range(len(ctx.content) - min(search_len, 10)):
-            window = ctx.content[i:i + search_len + 50]
+            window = ctx.content[i : i + search_len + 50]
             score = fuzz.ratio(edit.search, window[:search_len]) / 100.0
 
             if score > best_score:
@@ -315,7 +299,7 @@ class MatchingEngine:
                 best_match = window[:search_len]
                 best_pos = i
 
-        if best_score >= 0.70:
+        if best_score >= FUZZY_MATCH_THRESHOLD:
             return MatchResult(
                 success=False,  # Never auto-apply fuzzy
                 tier=MatchTier.FUZZY,
@@ -358,11 +342,7 @@ class SafetyChecker:
 class DiffGenerator:
     @classmethod
     def generate(
-        cls,
-        original: str,
-        modified: str,
-        path: str,
-        context_lines: int = 3,
+        cls, original: str, modified: str, path: str, context_lines: int = 3
     ) -> str:
         import difflib
 
@@ -377,7 +357,7 @@ class DiffGenerator:
             n=context_lines,
         )
 
-        return ''.join(diff)
+        return "".join(diff)
 
 
 @dataclass
@@ -388,34 +368,34 @@ class EditTransaction:
     modified_contents: dict[Path, str] = field(default_factory=dict)
 
     async def read_file(self, path: Path) -> str:
-        async with aiofiles.open(path, 'r', encoding='utf-8') as f:
+        async with aiofiles.open(path, encoding="utf-8") as f:
             content = await f.read()
         self.original_contents[path] = content
         return content
 
     def compute_hash(self, content: str) -> str:
-        return hashlib.md5(content.encode('utf-8')).hexdigest()
+        return hashlib.md5(content.encode("utf-8")).hexdigest()
 
     async def create_backup(self, path: Path) -> Path:
-        backup_path = path.with_suffix(path.suffix + '.bak')
+        backup_path = path.with_suffix(path.suffix + ".bak")
 
-        async with aiofiles.open(path, 'r', encoding='utf-8') as f:
+        async with aiofiles.open(path, encoding="utf-8") as f:
             content = await f.read()
 
-        async with aiofiles.open(backup_path, 'w', encoding='utf-8') as f:
+        async with aiofiles.open(backup_path, "w", encoding="utf-8") as f:
             await f.write(content)
 
         self.backup_paths[path] = backup_path
         return backup_path
 
     async def apply(self, path: Path, content: str) -> None:
-        async with aiofiles.open(path, 'w', encoding='utf-8') as f:
+        async with aiofiles.open(path, "w", encoding="utf-8") as f:
             await f.write(content)
         self.modified_contents[path] = content
 
     async def rollback(self, path: Path) -> bool:
         if path in self.original_contents:
-            async with aiofiles.open(path, 'w', encoding='utf-8') as f:
+            async with aiofiles.open(path, "w", encoding="utf-8") as f:
                 await f.write(self.original_contents[path])
             return True
         return False
@@ -435,6 +415,10 @@ class MultiEditConfig(BaseToolConfig):
 
 class MultiEditState(BaseToolState):
     last_transaction_id: str | None = None
+
+
+FUZZY_MATCH_THRESHOLD = 0.70
+MAX_DIFF_PREVIEW_LEN = 1000
 
 
 class MultiEdit(
@@ -528,7 +512,9 @@ class MultiEdit(
                 reject_files=reject_files if reject_files else None,
                 transaction_id=transaction_id,
                 can_apply=all_success and args.dry_run,
-                summary=self._generate_summary(results, state, edits_applied, edits_failed),
+                summary=self._generate_summary(
+                    results, state, edits_applied, edits_failed
+                ),
             )
 
         except Exception as e:
@@ -538,7 +524,7 @@ class MultiEdit(
                 state="failed",
                 results=results,
                 transaction_id=transaction_id,
-                summary=f"Error: {str(e)}",
+                summary=f"Error: {e!s}",
             )
 
     async def _process_file(
@@ -559,9 +545,7 @@ class MultiEdit(
 
         if not path.exists():
             return FileEditResult(
-                path=str(path),
-                success=False,
-                errors=[f"File not found: {path}"],
+                path=str(path), success=False, errors=[f"File not found: {path}"]
             )
 
         if path.stat().st_size > self.config.max_file_size:
@@ -575,9 +559,7 @@ class MultiEdit(
             content = await transaction.read_file(path)
         except Exception as e:
             return FileEditResult(
-                path=str(path),
-                success=False,
-                errors=[f"Failed to read file: {e}"],
+                path=str(path), success=False, errors=[f"Failed to read file: {e}"]
             )
 
         if file_edit.expected_hash:
@@ -595,15 +577,11 @@ class MultiEdit(
 
         for i, edit in enumerate(file_edit.edits):
             match_result = MatchingEngine.match(
-                modified_content,
-                edit,
-                args.min_confidence,
+                modified_content, edit, args.min_confidence
             )
 
             block_result = EditBlockResult(
-                edit_index=i,
-                success=match_result.success,
-                match_result=match_result,
+                edit_index=i, success=match_result.success, match_result=match_result
             )
 
             if match_result.success and match_result.confidence >= args.min_confidence:
@@ -613,17 +591,17 @@ class MultiEdit(
                 if start is not None and end is not None:
                     block_result.original_text = modified_content[start:end]
                     modified_content = (
-                        modified_content[:start] +
-                        edit.replace +
-                        modified_content[end:]
+                        modified_content[:start] + edit.replace + modified_content[end:]
                     )
                     block_result.applied_text = edit.replace
                     edits_applied += 1
 
                     if match_result.warning:
-                        warnings.append(f"Edit {i+1}: {match_result.warning}")
+                        warnings.append(f"Edit {i + 1}: {match_result.warning}")
             else:
-                errors.append(f"Edit {i+1}: {match_result.warning or 'No match found'}")
+                errors.append(
+                    f"Edit {i + 1}: {match_result.warning or 'No match found'}"
+                )
                 reject_parts.append(self._format_reject(edit, match_result))
 
             block_results.append(block_result)
@@ -647,7 +625,7 @@ class MultiEdit(
             diff_preview=diff_preview,
             errors=errors,
             warnings=warnings,
-            reject_content='\n'.join(reject_parts) if reject_parts else None,
+            reject_content="\n".join(reject_parts) if reject_parts else None,
         )
 
     def _format_reject(self, edit: EditBlock, match: MatchResult) -> str:
@@ -663,12 +641,8 @@ class MultiEdit(
             ">>>>>>> REPLACE",
         ]
         if match.suggestion:
-            lines.extend([
-                "",
-                "# Suggested match:",
-                match.suggestion,
-            ])
-        return '\n'.join(lines)
+            lines.extend(["", "# Suggested match:", match.suggestion])
+        return "\n".join(lines)
 
     def _generate_summary(
         self,
@@ -695,15 +669,15 @@ class MultiEdit(
 
         files = len(event.args.files)
         edits = sum(len(f.edits) for f in event.args.files)
-        mode = "check" if event.args.check_only else ("preview" if event.args.dry_run else "apply")
+        mode = (
+            "check"
+            if event.args.check_only
+            else ("preview" if event.args.dry_run else "apply")
+        )
 
         return ToolCallDisplay(
             summary=f"multi_edit: {files} file(s), {edits} edit(s) [{mode}]",
-            details={
-                "files": files,
-                "edits": edits,
-                "mode": mode,
-            },
+            details={"files": files, "edits": edits, "mode": mode},
         )
 
     @classmethod
@@ -720,9 +694,11 @@ class MultiEdit(
             lines.append("")
             for fr in result.results:
                 icon = "✅" if fr.success else "❌"
-                lines.append(f"{icon} {Path(fr.path).name}: {fr.edits_applied}/{len(fr.block_results)} edits")
+                lines.append(
+                    f"{icon} {Path(fr.path).name}: {fr.edits_applied}/{len(fr.block_results)} edits"
+                )
 
-                if fr.diff_preview and len(fr.diff_preview) < 1000:
+                if fr.diff_preview and len(fr.diff_preview) < MAX_DIFF_PREVIEW_LEN:
                     lines.append("```diff")
                     lines.append(fr.diff_preview[:800])
                     lines.append("```")

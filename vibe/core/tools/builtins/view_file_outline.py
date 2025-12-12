@@ -32,8 +32,7 @@ class CodeSymbol(BaseModel):
 class ViewFileOutlineArgs(BaseModel):
     path: str = Field(description="Path to the file to analyze.")
     include_docstrings: bool = Field(
-        default=True,
-        description="Include docstrings in output.",
+        default=True, description="Include docstrings in output."
     )
     max_depth: int = Field(
         default=2,
@@ -72,18 +71,27 @@ class ViewFileOutline(
         "Use this to understand code structure before making edits."
     )
 
-    SUPPORTED_EXTENSIONS = {".py": "python", ".pyi": "python"}
+    MAX_SUMMARY_CHILDREN = 5
+    DOCSTRING_PREVIEW_LEN = 200
+
+    SUPPORTED_EXTENSIONS: ClassVar[dict[str, str]] = {".py": "python", ".pyi": "python"}
 
     @final
     async def run(self, args: ViewFileOutlineArgs) -> ViewFileOutlineResult:
         file_path = self._prepare_and_validate_path(args)
         language = self._detect_language(file_path)
 
-        content = file_path.read_text(encoding="utf-8", errors="ignore")
+        import asyncio
+
+        content = await asyncio.to_thread(
+            file_path.read_text, encoding="utf-8", errors="ignore"
+        )
         total_lines = len(content.splitlines())
 
         if language == "python":
-            symbols = self._parse_python(content, args.include_docstrings, args.max_depth)
+            symbols = self._parse_python(
+                content, args.include_docstrings, args.max_depth
+            )
         else:
             symbols = []
 
@@ -139,11 +147,7 @@ class ViewFileOutline(
         return symbols
 
     def _node_to_symbol(
-        self,
-        node: ast.AST,
-        include_docstrings: bool,
-        max_depth: int,
-        depth: int,
+        self, node: ast.AST, include_docstrings: bool, max_depth: int, depth: int
     ) -> CodeSymbol | None:
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
             signature = self._get_function_signature(node)
@@ -155,7 +159,9 @@ class ViewFileOutline(
                 line_start=node.lineno,
                 line_end=node.end_lineno or node.lineno,
                 signature=signature,
-                docstring=docstring[:200] + "..." if docstring and len(docstring) > 200 else docstring,
+                docstring=docstring[: self.DOCSTRING_PREVIEW_LEN] + "..."
+                if docstring and len(docstring) > self.DOCSTRING_PREVIEW_LEN
+                else docstring,
             )
 
         elif isinstance(node, ast.ClassDef):
@@ -168,11 +174,19 @@ class ViewFileOutline(
                         child, include_docstrings, max_depth, depth + 1
                     )
                     if child_symbol:
-                        child_symbol.type = "method" if child_symbol.type == "function" else child_symbol.type
+                        child_symbol.type = (
+                            "method"
+                            if child_symbol.type == "function"
+                            else child_symbol.type
+                        )
                         children.append(child_symbol)
 
             bases = [self._get_name(base) for base in node.bases]
-            signature = f"class {node.name}({', '.join(bases)})" if bases else f"class {node.name}"
+            signature = (
+                f"class {node.name}({', '.join(bases)})"
+                if bases
+                else f"class {node.name}"
+            )
 
             return CodeSymbol(
                 name=node.name,
@@ -180,13 +194,17 @@ class ViewFileOutline(
                 line_start=node.lineno,
                 line_end=node.end_lineno or node.lineno,
                 signature=signature,
-                docstring=docstring[:200] + "..." if docstring and len(docstring) > 200 else docstring,
+                docstring=docstring[: self.DOCSTRING_PREVIEW_LEN] + "..."
+                if docstring and len(docstring) > self.DOCSTRING_PREVIEW_LEN
+                else docstring,
                 children=children,
             )
 
         return None
 
-    def _get_function_signature(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
+    def _get_function_signature(
+        self, node: ast.FunctionDef | ast.AsyncFunctionDef
+    ) -> str:
         args = []
         for arg in node.args.args:
             arg_str = arg.arg
@@ -201,27 +219,30 @@ class ViewFileOutline(
         prefix = "async def" if isinstance(node, ast.AsyncFunctionDef) else "def"
         return f"{prefix} {node.name}({', '.join(args)}){returns}"
 
-    def _get_name(self, node: ast.AST) -> str:
-        if isinstance(node, ast.Name):
-            return node.id
-        elif isinstance(node, ast.Attribute):
-            return f"{self._get_name(node.value)}.{node.attr}"
-        elif isinstance(node, ast.Subscript):
-            return f"{self._get_name(node.value)}[{self._get_name(node.slice)}]"
-        elif isinstance(node, ast.Constant):
-            return repr(node.value)
-        elif isinstance(node, ast.Tuple):
-            return f"({', '.join(self._get_name(e) for e in node.elts)})"
-        elif isinstance(node, ast.BinOp):
-            return f"{self._get_name(node.left)} | {self._get_name(node.right)}"
-        return "..."
+    def _get_name(self, node: ast.AST) -> str:  # noqa: PLR0911
+        match node:
+            case ast.Name(id=id):
+                return id
+            case ast.Attribute(value=value, attr=attr):
+                return f"{self._get_name(value)}.{attr}"
+            case ast.Subscript(value=value, slice=slice):
+                return f"{self._get_name(value)}[{self._get_name(slice)}]"
+            case ast.Constant(value=value):
+                return repr(value)
+            case ast.Tuple(elts=elts):
+                return f"({', '.join(self._get_name(e) for e in elts)})"
+            case ast.BinOp(left=left, right=right):
+                return f"{self._get_name(left)} | {self._get_name(right)}"
+            case _:
+                return "..."
 
     def _generate_summary(self, symbols: list[CodeSymbol]) -> str:
         classes = sum(1 for s in symbols if s.type == "class")
         functions = sum(1 for s in symbols if s.type == "function")
         methods = sum(
             len([c for c in s.children if c.type == "method"])
-            for s in symbols if s.type == "class"
+            for s in symbols
+            if s.type == "class"
         )
         return f"{classes} classes, {functions} functions, {methods} methods"
 
@@ -243,17 +264,23 @@ class ViewFileOutline(
             )
 
         result = event.result
-        lines = [f"📄 {Path(result.path).name} ({result.language}, {result.total_lines} lines)"]
+        lines = [
+            f"📄 {Path(result.path).name} ({result.language}, {result.total_lines} lines)"
+        ]
         lines.append(f"   {result.summary}")
         lines.append("")
 
         for symbol in result.symbols:
             icon = "🔷" if symbol.type == "class" else "🔹"
-            lines.append(f"{icon} {symbol.signature} (L{symbol.line_start}-{symbol.line_end})")
-            for child in symbol.children[:5]:
+            lines.append(
+                f"{icon} {symbol.signature} (L{symbol.line_start}-{symbol.line_end})"
+            )
+            for child in symbol.children[: cls.MAX_SUMMARY_CHILDREN]:
                 lines.append(f"   └─ {child.signature} (L{child.line_start})")
-            if len(symbol.children) > 5:
-                lines.append(f"   └─ ... and {len(symbol.children) - 5} more")
+            if len(symbol.children) > cls.MAX_SUMMARY_CHILDREN:
+                lines.append(
+                    f"   └─ ... and {len(symbol.children) - cls.MAX_SUMMARY_CHILDREN} more"
+                )
 
         return ToolResultDisplay(
             success=True,

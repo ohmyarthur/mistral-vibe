@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+import re
 import sys
 from typing import TYPE_CHECKING, ClassVar, final
-import re
 
 from pydantic import BaseModel, Field
 
@@ -19,6 +19,9 @@ from vibe.core.tools.ui import ToolCallDisplay, ToolResultDisplay, ToolUIData
 
 if TYPE_CHECKING:
     from vibe.core.types import ToolCallEvent, ToolResultEvent
+
+
+MAX_FAILED_TESTS_DISPLAY = 5
 
 
 class TestResult(BaseModel):
@@ -38,16 +41,11 @@ class TestRunArgs(BaseModel):
         description="Pattern to filter tests (e.g., 'test_auth' or '*login*').",
     )
     verbose: bool = Field(
-        default=True,
-        description="Show verbose output with individual test results.",
+        default=True, description="Show verbose output with individual test results."
     )
-    fail_fast: bool = Field(
-        default=False,
-        description="Stop on first failure.",
-    )
+    fail_fast: bool = Field(default=False, description="Stop on first failure.")
     max_tests: int = Field(
-        default=50,
-        description="Maximum number of test results to return.",
+        default=50, description="Maximum number of test results to return."
     )
 
 
@@ -91,7 +89,9 @@ class TestRun(
 
         stdout, stderr, returncode, duration = await self._run_pytest(cmd)
 
-        result = self._parse_output(stdout, stderr, returncode, duration, args.max_tests)
+        result = self._parse_output(
+            stdout, stderr, returncode, duration, args.max_tests
+        )
         self.state.last_run_results = result
 
         return result
@@ -124,6 +124,7 @@ class TestRun(
 
     async def _run_pytest(self, cmd: list[str]) -> tuple[str, str, int, float]:
         import time
+
         start = time.time()
 
         try:
@@ -136,10 +137,9 @@ class TestRun(
 
             try:
                 stdout_bytes, stderr_bytes = await asyncio.wait_for(
-                    proc.communicate(),
-                    timeout=self.config.timeout + 10,
+                    proc.communicate(), timeout=self.config.timeout + 10
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 proc.kill()
                 await proc.wait()
                 raise ToolError(f"Tests timed out after {self.config.timeout}s")
@@ -148,8 +148,8 @@ class TestRun(
             stdout = stdout_bytes.decode("utf-8", errors="replace")
             stderr = stderr_bytes.decode("utf-8", errors="replace")
 
-            stdout = stdout[:self.config.max_output]
-            stderr = stderr[:self.config.max_output // 2]
+            stdout = stdout[: self.config.max_output]
+            stderr = stderr[: self.config.max_output // 2]
 
             return stdout, stderr, proc.returncode or 0, duration
 
@@ -157,75 +157,19 @@ class TestRun(
             raise ToolError("pytest not found. Install with: pip install pytest")
 
     def _parse_output(
-        self,
-        stdout: str,
-        stderr: str,
-        returncode: int,
-        duration: float,
-        max_tests: int,
+        self, stdout: str, stderr: str, returncode: int, duration: float, max_tests: int
     ) -> TestRunResult:
-        tests: list[TestResult] = []
-        failed_tests: list[TestResult] = []
+        tests, failed_tests, counts = self._parse_test_lines(stdout, max_tests)
 
-        passed = failed = errors = skipped = 0
+        # Override counts with summary info if available
+        summary_counts = self._parse_summary(stdout)
+        if summary_counts:
+            counts.update(summary_counts)
 
-        test_pattern = re.compile(
-            r"^([\w/\.]+::[\w]+(?:::[\w]+)?)\s+(PASSED|FAILED|ERROR|SKIPPED)",
-            re.MULTILINE,
-        )
-
-        for match in test_pattern.finditer(stdout):
-            if len(tests) >= max_tests:
-                break
-
-            name = match.group(1)
-            status = match.group(2).lower()
-
-            test = TestResult(name=name, status=status)
-            tests.append(test)
-
-            if status == "passed":
-                passed += 1
-            elif status == "failed":
-                failed += 1
-                failed_tests.append(test)
-            elif status == "error":
-                errors += 1
-                failed_tests.append(test)
-            elif status == "skipped":
-                skipped += 1
-
-        summary_match = re.search(
-            r"=+\s*(\d+)\s+passed.*?(\d+)?\s*failed.*?in\s+([\d.]+)s",
-            stdout,
-            re.IGNORECASE,
-        )
-        if summary_match:
-            passed = int(summary_match.group(1))
-            failed = int(summary_match.group(2) or 0)
-
-        alt_summary = re.search(
-            r"=+\s*([\d\w, ]+)\s+in\s+([\d.]+)s\s*=+",
-            stdout,
-        )
-        if alt_summary:
-            counts = alt_summary.group(1)
-            if "passed" in counts:
-                m = re.search(r"(\d+)\s+passed", counts)
-                if m:
-                    passed = int(m.group(1))
-            if "failed" in counts:
-                m = re.search(r"(\d+)\s+failed", counts)
-                if m:
-                    failed = int(m.group(1))
-            if "skipped" in counts:
-                m = re.search(r"(\d+)\s+skipped", counts)
-                if m:
-                    skipped = int(m.group(1))
-            if "error" in counts:
-                m = re.search(r"(\d+)\s+error", counts)
-                if m:
-                    errors = int(m.group(1))
+        passed = counts["passed"]
+        failed = counts["failed"]
+        errors = counts["errors"]
+        skipped = counts["skipped"]
 
         total = passed + failed + errors + skipped
         success = returncode == 0 and failed == 0 and errors == 0
@@ -252,6 +196,66 @@ class TestRun(
             success=success,
             summary=summary,
         )
+
+    def _parse_test_lines(
+        self, stdout: str, max_tests: int
+    ) -> tuple[list[TestResult], list[TestResult], dict[str, int]]:
+        tests: list[TestResult] = []
+        failed_tests: list[TestResult] = []
+        counts = {"passed": 0, "failed": 0, "errors": 0, "skipped": 0}
+
+        test_pattern = re.compile(
+            r"^([\w/\.]+::[\w]+(?:::[\w]+)?)\s+(PASSED|FAILED|ERROR|SKIPPED)",
+            re.MULTILINE,
+        )
+
+        for match in test_pattern.finditer(stdout):
+            if len(tests) >= max_tests:
+                break
+
+            name = match.group(1)
+            status = match.group(2).lower()
+
+            test = TestResult(name=name, status=status)
+            tests.append(test)
+
+            if status == "passed":
+                counts["passed"] += 1
+            elif status == "failed":
+                counts["failed"] += 1
+                failed_tests.append(test)
+            elif status == "error":
+                counts["errors"] += 1
+                failed_tests.append(test)
+            elif status == "skipped":
+                counts["skipped"] += 1
+
+        return tests, failed_tests, counts
+
+    def _parse_summary(self, stdout: str) -> dict[str, int] | None:
+        counts = {}
+        summary_match = re.search(
+            r"=+\s*(\d+)\s+passed.*?(\d+)?\s*failed.*?in\s+([\d.]+)s",
+            stdout,
+            re.IGNORECASE,
+        )
+        if summary_match:
+            counts["passed"] = int(summary_match.group(1))
+            counts["failed"] = int(summary_match.group(2) or 0)
+            return counts
+
+        alt_summary = re.search(r"=+\s*([\d\w, ]+)\s+in\s+([\d.]+)s\s*=+", stdout)
+        if alt_summary:
+            status_text = alt_summary.group(1)
+            for status in ["passed", "failed", "skipped", "error"]:
+                m = re.search(rf"(\d+)\s+{status}", status_text)
+                if m:
+                    counts[status + "s" if status == "error" else status] = int(
+                        m.group(1)
+                    )
+            return counts
+
+        return None
 
     @classmethod
     def get_call_display(cls, event: ToolCallEvent) -> ToolCallDisplay:
@@ -281,10 +285,12 @@ class TestRun(
 
         if result.failed_tests:
             lines.append("\n❌ Failed Tests:")
-            for test in result.failed_tests[:5]:
+            for test in result.failed_tests[:MAX_FAILED_TESTS_DISPLAY]:
                 lines.append(f"  • {test.name}")
-            if len(result.failed_tests) > 5:
-                lines.append(f"  ... and {len(result.failed_tests) - 5} more")
+            if len(result.failed_tests) > MAX_FAILED_TESTS_DISPLAY:
+                lines.append(
+                    f"  ... and {len(result.failed_tests) - MAX_FAILED_TESTS_DISPLAY} more"
+                )
 
         return ToolResultDisplay(
             success=result.success,
