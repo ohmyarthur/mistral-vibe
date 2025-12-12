@@ -40,9 +40,9 @@ class CollapsibleSection(Static):
         self._title = title
         self._icon = icon
         self._status_style = status_style
-        self.expanded = expanded
         self._header: Static | None = None
         self._content_container: Vertical | None = None
+        self.expanded = expanded
 
     def compose(self) -> ComposeResult:
         self._header = Static(self._render_header(), classes="collapsible-header")
