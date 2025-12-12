@@ -37,7 +37,7 @@ class ToolResultWidget(Static):
         message = self.data.get("message", "")
 
         if self.collapsed:
-            yield Static(f"{message} (ctrl+o to expand.)", markup=False)
+            yield Static(f"{message}", markup=False)
         else:
             yield Static(message, markup=False)
 
@@ -66,7 +66,7 @@ class BashResultWidget(ToolResultWidget):
         message = self.data.get("message", "")
 
         if self.collapsed:
-            yield Static(f"{message} (ctrl+o to expand.)", markup=False)
+            yield Static(f"{message}", markup=False)
         else:
             yield Static(message, markup=False)
 
@@ -96,7 +96,7 @@ class WriteFileResultWidget(ToolResultWidget):
         message = self.data.get("message", "")
 
         if self.collapsed:
-            yield Static(f"{message} (ctrl+o to expand.)", markup=False)
+            yield Static(f"{message}", markup=False)
         else:
             yield Static(message, markup=False)
 
@@ -158,7 +158,7 @@ class SearchReplaceResultWidget(ToolResultWidget):
         message = self.data.get("message", "")
 
         if self.collapsed:
-            yield Static(f"{message} (ctrl+o to expand.)", markup=False)
+            yield Static(f"{message}", markup=False)
         else:
             yield Static(message, markup=False)
 
@@ -186,30 +186,51 @@ class TodoApprovalWidget(ToolApprovalWidget):
 
 class TodoResultWidget(ToolResultWidget):
     def compose(self) -> ComposeResult:
-        message = self.data.get("message", "")
+        by_status = self.data.get("todos_by_status", {})
+        all_todos = []
+        for todos in by_status.values():
+            all_todos.extend(todos)
 
-        if self.collapsed:
-            yield Static(message, markup=False)
+        total = len(all_todos)
+        completed = len(by_status.get("completed", []))
+        in_progress = len(by_status.get("in_progress", []))
+        pending = len(by_status.get("pending", []))
+
+        if total == 0:
+            return
+
+        if completed == total:
+            icon = "☑"
+            style = "todo-completed"
+            summary = f"{icon} All {total} tasks completed"
+        elif in_progress > 0:
+            icon = "◐"
+            style = "todo-in_progress"
+            summary = (
+                f"{icon} {in_progress} in progress, {pending} pending, {completed} done"
+            )
         else:
-            yield Static(message, markup=False)
+            icon = "☐"
+            style = "todo-pending"
+            summary = f"{icon} {pending} pending, {completed} done"
+
+        yield Static(summary, markup=False, classes=style)
+
+        if not self.collapsed:
             yield Static("")
-
-            by_status = self.data.get("todos_by_status", {})
-            if not any(by_status.values()):
-                yield Static("No todos", markup=False, classes="todo-empty")
-                return
-
             for status in ["in_progress", "pending", "completed", "cancelled"]:
                 todos = by_status.get(status, [])
                 for todo in todos:
                     content = todo.get("content", "")
-                    icon = self._get_status_icon(status)
+                    todo_icon = self._get_status_icon(status)
                     yield Static(
-                        f"{icon} {content}", markup=False, classes=f"todo-{status}"
+                        f"  {todo_icon} {content}",
+                        markup=False,
+                        classes=f"todo-{status}",
                     )
 
     def _get_status_icon(self, status: str) -> str:
-        icons = {"pending": "☐", "in_progress": "☐", "completed": "☑", "cancelled": "☒"}
+        icons = {"pending": "☐", "in_progress": "◐", "completed": "☑", "cancelled": "☒"}
         return icons.get(status, "☐")
 
 
@@ -228,7 +249,7 @@ class ReadFileResultWidget(ToolResultWidget):
         message = self.data.get("message", "")
 
         if self.collapsed:
-            yield Static(f"{message} (ctrl+o to expand.)", markup=False)
+            yield Static(f"{message}", markup=False)
         else:
             yield Static(message, markup=False)
 
@@ -277,7 +298,7 @@ class GrepResultWidget(ToolResultWidget):
         message = self.data.get("message", "")
 
         if self.collapsed:
-            yield Static(f"{message} (ctrl+o to expand.)", markup=False)
+            yield Static(f"{message}", markup=False)
         else:
             yield Static(message, markup=False)
 

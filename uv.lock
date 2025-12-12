@@ -670,7 +670,7 @@ wheels = [
 
 [[package]]
 name = "mistral-vibe"
-version = "1.1.2"
+version = "1.1.5"
 source = { editable = "." }
 dependencies = [
     { name = "aerofs", marker = "sys_platform == 'linux'" },

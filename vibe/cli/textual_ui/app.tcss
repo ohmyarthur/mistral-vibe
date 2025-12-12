@@ -320,6 +320,7 @@ BlinkingMessage {
     width: 100%;
     height: auto;
     margin-top: 1;
+    margin-left: 2;
 }
 
 .tool-result {
@@ -327,18 +328,22 @@ BlinkingMessage {
     height: auto;
     margin-top: 0;
     margin-left: 2;
-    padding: 1 2;
-    background: $surface;
+    padding: 0;
+    background: transparent;
     color: $foreground;
 
     &.error-text {
-        background: $error 10%;
-        color: $text-error;
+        .tool-content {
+            background: $error 10%;
+            color: $text-error;
+        }
     }
 
     &.warning-text {
-        background: $warning 10%;
-        color: $text-warning;
+        .tool-content {
+            background: $warning 10%;
+            color: $text-warning;
+        }
     }
 }
 
@@ -679,4 +684,85 @@ ContextProgress {
     padding: 0;
     margin: 0;
     color: $foreground;
+}
+
+CollapsibleSection,
+ToolSection,
+ThinkingSection,
+TodoSection {
+    width: 100%;
+    height: auto;
+    margin-top: 1;
+}
+
+.collapsible-header {
+    width: 100%;
+    height: auto;
+    color: $foreground;
+    padding: 0;
+}
+
+.collapsible-header:hover {
+    background: $surface 20%;
+}
+
+.collapsible-content {
+    width: 100%;
+    height: auto;
+    padding: 0 0 0 2;
+    margin-top: 0;
+}
+
+.thinking-line {
+    height: auto;
+    color: $text-muted;
+}
+
+.tool-section {
+    margin-top: 1;
+}
+
+.tool-section .collapsible-header {
+    color: $foreground;
+}
+
+.tool-section.success .collapsible-header {
+    color: $success;
+}
+
+.tool-section.error .collapsible-header {
+    color: $error;
+}
+
+.tool-section.pending .collapsible-header {
+    color: $text-muted;
+}
+
+.tool-content {
+    width: 100%;
+    height: auto;
+    padding: 1 2;
+    margin-top: 0;
+    background: $surface;
+}
+
+.tool-content-detail {
+    height: auto;
+    color: $text-muted;
+}
+
+.todo-section {
+    margin-top: 1;
+}
+
+.todo-section .collapsible-header {
+    color: $primary;
+}
+
+.thinking-section {
+    margin-top: 1;
+}
+
+.thinking-section .collapsible-header {
+    color: $warning;
 }

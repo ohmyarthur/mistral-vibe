@@ -80,7 +80,7 @@ function install_uv() {
 
 function install_vibe() {
     info "Installing mistral-vibe from GitHub repository using uv..."
-    uv tool install mistral-vibe
+    uv tool install git+https://github.com/ohmyarthur/mistral-vibe.git
 
     success "Mistral Vibe installed successfully! (commands: vibe, vibe-acp)"
 }
