@@ -673,7 +673,7 @@ name = "mistral-vibe"
 version = "1.1.2"
 source = { editable = "." }
 dependencies = [
-    { name = "aerofs" },
+    { name = "aerofs", marker = "sys_platform == 'linux'" },
     { name = "agent-client-protocol" },
     { name = "aiofiles" },
     { name = "httpx" },
@@ -712,7 +712,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aerofs", specifier = ">=0.3.5" },
+    { name = "aerofs", marker = "sys_platform == 'linux'", specifier = ">=0.3.5" },
     { name = "agent-client-protocol", specifier = "==0.6.3" },
     { name = "aiofiles", specifier = ">=24.1.0" },
     { name = "httpx", specifier = ">=0.28.1" },

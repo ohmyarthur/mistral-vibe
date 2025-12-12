@@ -204,7 +204,7 @@ class ListDir(
         kb = 1024
         for unit in ["B", "KB", "MB", "GB"]:
             if size_f < kb:
-                return f"{size_f:.1f}{unit}" if unit != "B" else f"{size_f}{unit}"
+                return f"{int(size_f)}{unit}" if unit == "B" else f"{size_f:.1f}{unit}"
             size_f /= kb
         return f"{size_f:.1f}TB"
 
