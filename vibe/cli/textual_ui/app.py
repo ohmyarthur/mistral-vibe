@@ -3,8 +3,8 @@ from __future__ import annotations
 import asyncio
 from enum import StrEnum, auto
 import os
-import subprocess
-from typing import Any, ClassVar, assert_never
+import signal
+from typing import Any, ClassVar, Literal, assert_never
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding, BindingType
@@ -181,8 +181,6 @@ class VibeApp(App):
 
         if self._initial_prompt:
             self.call_after_refresh(self._process_initial_prompt)
-        else:
-            self._ensure_agent_init_task()
 
     def _process_initial_prompt(self) -> None:
         if self._initial_prompt:
@@ -316,36 +314,73 @@ class VibeApp(App):
             )
             return
 
+        proc: asyncio.subprocess.Process | None = None
+
+        async def kill_proc() -> None:
+            if proc is None or proc.returncode is not None:
+                return
+
+            try:
+                if os.name != "nt":
+                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                else:
+                    proc.kill()
+            except Exception:
+                try:
+                    proc.kill()
+                except ProcessLookupError:
+                    return
+
+            try:
+                await proc.wait()
+            except Exception:
+                return
+
         try:
-            result = subprocess.run(
+            kwargs: dict[Literal["start_new_session"], bool] = {}
+            if os.name != "nt":
+                kwargs["start_new_session"] = True
+            proc = await asyncio.create_subprocess_shell(
                 command,
-                shell=True,
-                capture_output=True,
-                text=False,
-                timeout=30,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                stdin=asyncio.subprocess.DEVNULL,
                 cwd=self.config.effective_workdir,
+                **kwargs,
             )
+
+            try:
+                stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                    proc.communicate(), timeout=30
+                )
+            except TimeoutError:
+                await kill_proc()
+                await self._mount_and_scroll(
+                    ErrorMessage(
+                        "Command timed out after 30 seconds",
+                        collapsed=self._tools_collapsed,
+                    )
+                )
+                return
+
             stdout = (
-                result.stdout.decode("utf-8", errors="replace") if result.stdout else ""
+                stdout_bytes.decode("utf-8", errors="replace") if stdout_bytes else ""
             )
             stderr = (
-                result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
+                stderr_bytes.decode("utf-8", errors="replace") if stderr_bytes else ""
             )
             output = stdout or stderr or "(no output)"
-            exit_code = result.returncode
+            exit_code = proc.returncode or 0
             await self._mount_and_scroll(
                 BashOutputMessage(
                     command, str(self.config.effective_workdir), output, exit_code
                 )
             )
-        except subprocess.TimeoutExpired:
-            await self._mount_and_scroll(
-                ErrorMessage(
-                    "Command timed out after 30 seconds",
-                    collapsed=self._tools_collapsed,
-                )
-            )
+        except asyncio.CancelledError:
+            await kill_proc()
+            raise
         except Exception as e:
+            await kill_proc()
             await self._mount_and_scroll(
                 ErrorMessage(f"Command failed: {e}", collapsed=self._tools_collapsed)
             )
@@ -409,7 +444,8 @@ class VibeApp(App):
 
         self._agent_initializing = True
         try:
-            agent = Agent(
+            agent = await asyncio.to_thread(
+                Agent,
                 self.config,
                 auto_approve=self.auto_approve,
                 enable_streaming=self.enable_streaming,

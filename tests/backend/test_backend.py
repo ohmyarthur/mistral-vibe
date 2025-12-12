@@ -191,6 +191,53 @@ class TestBackend:
                         )
 
     @pytest.mark.asyncio
+    async def test_generic_backend_sse_parsing_supports_multiline_data(self) -> None:
+        base_url = "https://api.example.com"
+        stream_bytes = (
+            b"event: message\n"
+            b'data: {"id":"fake_id_1234",\n'
+            b'data: "object":"chat.completion.chunk","created":1234567890,"model":"devstral-latest","choices":[{"index":0,"delta":{"role":"assistant","content":"Hey"},"finish_reason":"stop"}]}\n'
+            b"\n"
+            b"data: [DONE]\n\n"
+        )
+
+        with respx.mock(base_url=base_url) as mock_api:
+            mock_api.post("/v1/chat/completions").mock(
+                return_value=httpx.Response(
+                    status_code=200,
+                    stream=httpx.ByteStream(stream=stream_bytes),
+                    headers={"Content-Type": "text/event-stream"},
+                )
+            )
+
+            provider = ProviderConfig(
+                name="provider_name",
+                api_base=f"{base_url}/v1",
+                api_key_env_var="API_KEY",
+            )
+            backend: BackendLike = GenericBackend(provider=provider)
+            model = ModelConfig(
+                name="model_name", provider="provider_name", alias="model_alias"
+            )
+            messages = [LLMMessage(role=Role.user, content="Just say hi")]
+
+            results: list[LLMChunk] = []
+            async for result in backend.complete_streaming(
+                model=model,
+                messages=messages,
+                temperature=0.2,
+                tools=None,
+                max_tokens=None,
+                tool_choice=None,
+                extra_headers=None,
+            ):
+                results.append(result)
+
+            assert len(results) == 1
+            assert results[0].message.content == "Hey"
+            assert results[0].finish_reason == "stop"
+
+    @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "base_url,backend_class,response",
         [

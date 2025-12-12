@@ -195,10 +195,12 @@ def async_retry[T, **P](
     def decorator(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
         @functools.wraps(func)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
-            last_exc = None
+            last_exc: Exception | None = None
             for attempt in range(tries):
                 try:
                     return await func(*args, **kwargs)
+                except asyncio.CancelledError:
+                    raise
                 except Exception as e:
                     last_exc = e
                     if attempt < tries - 1 and is_retryable(e):
@@ -207,7 +209,8 @@ def async_retry[T, **P](
                         )
                         await asyncio.sleep(current_delay)
                         continue
-                    raise e
+                    raise
+
             raise RuntimeError(
                 f"Retries exhausted. Last error: {last_exc}"
             ) from last_exc
@@ -241,24 +244,21 @@ def async_generator_retry[T, **P](
     ) -> Callable[P, AsyncGenerator[T]]:
         @functools.wraps(func)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> AsyncGenerator[T]:
-            last_exc = None
             for attempt in range(tries):
                 try:
                     async for item in func(*args, **kwargs):
                         yield item
                     return
+                except asyncio.CancelledError:
+                    raise
                 except Exception as e:
-                    last_exc = e
                     if attempt < tries - 1 and is_retryable(e):
                         current_delay = (delay_seconds * (backoff_factor**attempt)) + (
                             0.05 * attempt
                         )
                         await asyncio.sleep(current_delay)
                         continue
-                    raise e
-            raise RuntimeError(
-                f"Retries exhausted. Last error: {last_exc}"
-            ) from last_exc
+                    raise
 
         return wrapper
 

@@ -277,6 +277,7 @@ async def test_finds_files_recursively_with_partial_path(
 
 
 @pytest.mark.asyncio
+@pytest.mark.timeout(20)
 async def test_does_not_trigger_completion_when_navigating_history(
     file_tree: Path, vibe_app: VibeApp
 ) -> None:

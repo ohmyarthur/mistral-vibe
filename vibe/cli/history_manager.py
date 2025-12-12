@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-import json
 from pathlib import Path
+
+from vibe.core.json_utils import dumps, loads
 
 
 class HistoryManager:
@@ -26,8 +27,8 @@ class HistoryManager:
                     if not raw_line:
                         continue
                     try:
-                        entry = json.loads(raw_line)
-                    except json.JSONDecodeError:
+                        entry = loads(raw_line)
+                    except ValueError:
                         entry = raw_line
                     entries.append(entry if isinstance(entry, str) else str(entry))
                 self._entries = entries[-self.max_entries :]
@@ -42,7 +43,7 @@ class HistoryManager:
             self.history_file.parent.mkdir(parents=True, exist_ok=True)
             with self.history_file.open("w", encoding="utf-8") as f:
                 for entry in self._entries:
-                    f.write(json.dumps(entry) + "\n")
+                    f.write(dumps(entry) + "\n")
         except OSError:
             pass
 

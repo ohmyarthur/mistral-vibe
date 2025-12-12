@@ -67,6 +67,7 @@ async def pass_welcome_screen(pilot: Pilot) -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.timeout(20)
 async def test_ui_gets_through_the_onboarding_successfully(
     onboarding_app: tuple[OnboardingApp, Path, dict[str, Any]],
 ) -> None:
@@ -97,6 +98,7 @@ async def test_ui_gets_through_the_onboarding_successfully(
 
 
 @pytest.mark.asyncio
+@pytest.mark.timeout(20)
 async def test_ui_can_pick_a_theme_and_saves_selection(
     onboarding_app: tuple[OnboardingApp, Path, dict[str, Any]],
 ) -> None:

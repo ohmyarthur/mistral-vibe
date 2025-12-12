@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from datetime import datetime
 import getpass
-import json
 from pathlib import Path
 import subprocess
 from typing import TYPE_CHECKING, Any
 
 import aiofiles
 
+from vibe.core.json_utils import dumps, loads
 from vibe.core.llm.format import get_active_tool_classes
 from vibe.core.types import AgentStats, LLMMessage, SessionInfo, SessionMetadata
 from vibe.core.utils import is_windows
@@ -153,7 +153,7 @@ class InteractionLogger:
         }
 
         try:
-            json_content = json.dumps(interaction_data, indent=2, ensure_ascii=False)
+            json_content = dumps(interaction_data, indent=2, ensure_ascii=False)
 
             async with aiofiles.open(self.filepath, "w", encoding="utf-8") as f:
                 await f.write(json_content)
@@ -240,7 +240,7 @@ class InteractionLogger:
         def _load_sync() -> tuple[list[LLMMessage], dict[str, Any]]:
             with filepath.open("r", encoding="utf-8") as f:
                 content = f.read()
-            data = json.loads(content)
+            data = loads(content)
             messages = [
                 LLMMessage.model_validate(msg) for msg in data.get("messages", [])
             ]

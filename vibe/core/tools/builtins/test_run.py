@@ -25,6 +25,7 @@ MAX_FAILED_TESTS_DISPLAY = 5
 
 
 class TestResult(BaseModel):
+    __test__ = False
     name: str
     status: str  # "passed", "failed", "error", "skipped"
     duration: float | None = None
@@ -32,6 +33,7 @@ class TestResult(BaseModel):
 
 
 class TestRunArgs(BaseModel):
+    __test__ = False
     path: str = Field(
         default=".",
         description="Path to test file or directory. Defaults to current directory.",
@@ -50,6 +52,7 @@ class TestRunArgs(BaseModel):
 
 
 class TestRunResult(BaseModel):
+    __test__ = False
     passed: int = 0
     failed: int = 0
     errors: int = 0
@@ -64,12 +67,14 @@ class TestRunResult(BaseModel):
 
 
 class TestRunToolConfig(BaseToolConfig):
+    __test__ = False
     permission: ToolPermission = ToolPermission.ASK
     timeout: int = Field(default=120, description="Test timeout in seconds.")
     max_output: int = Field(default=10000, description="Max output characters.")
 
 
 class TestRunState(BaseToolState):
+    __test__ = False
     last_run_results: TestRunResult | None = None
 
 
@@ -77,6 +82,7 @@ class TestRun(
     BaseTool[TestRunArgs, TestRunResult, TestRunToolConfig, TestRunState],
     ToolUIData[TestRunArgs, TestRunResult],
 ):
+    __test__ = False
     description: ClassVar[str] = (
         "Run pytest tests and return structured results. "
         "Use this to verify code changes, run specific tests, or check test coverage."

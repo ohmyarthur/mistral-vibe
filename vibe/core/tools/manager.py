@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+import hashlib
 import importlib.util
 import inspect
 from logging import getLogger
@@ -94,7 +95,8 @@ class ToolManager:
                     continue
 
                 stem = re.sub(r"[^0-9A-Za-z_]", "_", path.stem) or "mod"
-                module_name = f"vibe_tools_discovered_{stem}"
+                digest = hashlib.sha256(str(path).encode("utf-8")).hexdigest()[:10]
+                module_name = f"vibe_tools_discovered_{stem}_{digest}"
 
                 spec = importlib.util.spec_from_file_location(module_name, path)
                 if spec is None or spec.loader is None:
@@ -103,7 +105,9 @@ class ToolManager:
                 sys.modules[module_name] = module
                 try:
                     spec.loader.exec_module(module)
-                except Exception:
+                except Exception as exc:
+                    sys.modules.pop(module_name, None)
+                    logger.warning("Failed to import tool module %s: %s", path, exc)
                     continue
 
                 for obj in vars(module).values():

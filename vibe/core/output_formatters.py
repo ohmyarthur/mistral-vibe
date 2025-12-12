@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-import json
 import sys
 from typing import TextIO
 
+from vibe.core.json_utils import dump
 from vibe.core.types import AssistantEvent, BaseEvent, LLMMessage, OutputFormat
 
 
@@ -53,7 +53,7 @@ class JsonOutputFormatter(OutputFormatter):
 
     def finalize(self) -> str | None:
         messages_data = [msg.model_dump(mode="json") for msg in self._messages]
-        json.dump(messages_data, self.stream, indent=2)
+        dump(messages_data, self.stream, indent=2)
         self.stream.write("\n")
         self.stream.flush()
         return None
@@ -61,7 +61,7 @@ class JsonOutputFormatter(OutputFormatter):
 
 class StreamingJsonOutputFormatter(OutputFormatter):
     def on_message_added(self, message: LLMMessage) -> None:
-        json.dump(message.model_dump(mode="json"), self.stream)
+        dump(message.model_dump(mode="json"), self.stream)
         self.stream.write("\n")
         self.stream.flush()
 

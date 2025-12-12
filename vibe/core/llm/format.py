@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from fnmatch import fnmatch
 from functools import lru_cache
-import json
 import re
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from vibe.core.json_utils import loads
 from vibe.core.tools.base import BaseTool
 from vibe.core.types import (
     AvailableFunction,
@@ -190,9 +190,11 @@ class APIToolFormatHandler:
             if not (function_call := tc.function):
                 continue
             try:
-                args = json.loads(function_call.arguments or "{}")
-            except json.JSONDecodeError:
-                args = {}
+                parsed = loads(function_call.arguments or "{}")
+            except ValueError:
+                parsed = {}
+
+            args = parsed if isinstance(parsed, dict) else {}
 
             tool_calls.append(
                 ParsedToolCall(

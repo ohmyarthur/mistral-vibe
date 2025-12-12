@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator, Callable
-import json
 import os
 import types
 from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple, Protocol, TypeVar
 
 import httpx
 
+from vibe.core.json_utils import dumps_bytes, loads
 from vibe.core.llm.exceptions import BackendErrorBuilder
 from vibe.core.types import (
     AvailableTool,
@@ -17,7 +17,7 @@ from vibe.core.types import (
     Role,
     StrToolChoice,
 )
-from vibe.core.utils import async_generator_retry, async_retry
+from vibe.core.utils import async_generator_retry, async_retry, logger
 
 if TYPE_CHECKING:
     from vibe.core.config import ModelConfig, ProviderConfig
@@ -129,7 +129,7 @@ class OpenAIAdapter(APIAdapter):
 
         headers = self.build_headers(api_key)
 
-        body = json.dumps(payload).encode("utf-8")
+        body = dumps_bytes(payload)
 
         return PreparedRequest(self.endpoint, headers, body)
 
@@ -362,22 +362,57 @@ class GenericBackend:
             method="POST", url=url, content=data, headers=headers
         ) as response:
             response.raise_for_status()
-            async for line in response.aiter_lines():
-                if line.strip() == "":
+            data_lines: list[str] = []
+
+            def flush_event() -> tuple[dict[str, Any] | None, bool]:
+                if not data_lines:
+                    return None, False
+
+                payload = "\n".join(data_lines).strip()
+                data_lines.clear()
+
+                if not payload:
+                    return None, False
+
+                if payload == "[DONE]":
+                    return None, True
+
+                try:
+                    parsed = loads(payload)
+                except Exception:
+                    logger.debug("Skipping non-JSON SSE data payload: %r", payload)
+                    return None, False
+
+                return (parsed if isinstance(parsed, dict) else None), False
+
+            async for raw_line in response.aiter_lines():
+                line = raw_line.rstrip("\r")
+
+                if line == "":
+                    item, done = flush_event()
+                    if item is not None:
+                        yield item
+                    if done:
+                        return
                     continue
 
-                DELIM_CHAR = ":"
-                assert f"{DELIM_CHAR} " in line, "line should look like `key: value`"
-                delim_index = line.find(DELIM_CHAR)
-                key = line[0:delim_index]
-                value = line[delim_index + 2 :]
-
-                if key != "data":
-                    # This might be the case with openrouter, so we just ignore it
+                if line.startswith(":"):
                     continue
-                if value == "[DONE]":
-                    return
-                yield json.loads(value.strip())
+
+                field, sep, value = line.partition(":")
+                if not sep:
+                    continue
+
+                if field != "data":
+                    continue
+
+                data_lines.append(value.lstrip(" "))
+
+            item, done = flush_event()
+            if item is not None:
+                yield item
+            if done:
+                return
 
     async def count_tokens(
         self,

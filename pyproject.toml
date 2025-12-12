@@ -33,6 +33,7 @@ dependencies = [
     "httpx>=0.28.1",
     "mcp>=1.14.0",
     "mistralai==1.9.11",
+    "orjson>=3.10.0",
     "pexpect>=4.9.0",
     "packaging>=24.1",
     "pydantic>=2.12.4",
@@ -40,10 +41,10 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "rich>=14.0.0",
     "textual>=1.0.0",
+    "textual-speedups>=0.2.1",
     "tomli-w>=1.2.0",
     "watchfiles>=1.1.1",
     "pyperclip>=1.11.0",
-    "textual-speedups>=0.2.1",
 ]
 
 [project.urls]

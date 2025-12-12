@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
-import json
 import os
 import re
 import types
@@ -10,6 +9,7 @@ from typing import TYPE_CHECKING, cast
 import httpx
 import mistralai
 
+from vibe.core.json_utils import dumps
 from vibe.core.llm.exceptions import BackendErrorBuilder
 from vibe.core.types import (
     AvailableTool,
@@ -103,7 +103,7 @@ class MistralMapper:
                     name=tool_call.function.name,
                     arguments=tool_call.function.arguments
                     if isinstance(tool_call.function.arguments, str)
-                    else json.dumps(tool_call.function.arguments),
+                    else dumps(tool_call.function.arguments),
                 ),
                 index=tool_call.index,
             )
