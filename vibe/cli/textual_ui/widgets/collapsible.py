@@ -112,11 +112,7 @@ class ToolSection(CollapsibleSection):
         icon = self._get_status_icon(success, pending)
         status_style = self._get_status_style(success, pending)
         super().__init__(
-            title,
-            expanded=expanded,
-            icon=icon,
-            status_style=status_style,
-            **kwargs,
+            title, expanded=expanded, icon=icon, status_style=status_style, **kwargs
         )
         self._success = success
         self._pending = pending
@@ -223,10 +219,5 @@ class TodoSection(CollapsibleSection):
             )
 
     def _get_todo_icon(self, status: str) -> str:
-        icons = {
-            "pending": "☐",
-            "in_progress": "◐",
-            "completed": "☑",
-            "cancelled": "☒",
-        }
+        icons = {"pending": "☐", "in_progress": "◐", "completed": "☑", "cancelled": "☒"}
         return icons.get(status, "☐")
