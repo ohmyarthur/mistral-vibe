@@ -1,44 +1,38 @@
 from __future__ import annotations
 
-from importlib.util import find_spec
 import json
 from typing import Any, TextIO
 
-
-_HAS_ORJSON = find_spec("orjson") is not None
-if _HAS_ORJSON:
+try:
     import orjson
+except ImportError:
+    orjson = None
+
+
+ORJSON_INDENT_2 = 2
 
 
 def dumps_bytes(
-    obj: Any,
-    *,
-    indent: int | None = None,
-    ensure_ascii: bool = True,
+    obj: Any, *, indent: int | None = None, ensure_ascii: bool = True
 ) -> bytes:
-    if _HAS_ORJSON:
+    if orjson is not None:
         option = 0
-        if ensure_ascii and hasattr(orjson, "OPT_ESCAPE_UNICODE"):
-            option |= orjson.OPT_ESCAPE_UNICODE
+        if ensure_ascii:
+            option |= int(getattr(orjson, "OPT_ESCAPE_UNICODE", 0))
         if indent is None:
             return orjson.dumps(obj, option=option)
-        if indent == 2:
+        if indent == ORJSON_INDENT_2:
             return orjson.dumps(obj, option=option | orjson.OPT_INDENT_2)
 
     return json.dumps(obj, ensure_ascii=ensure_ascii, indent=indent).encode("utf-8")
 
 
-def dumps(
-    obj: Any,
-    *,
-    indent: int | None = None,
-    ensure_ascii: bool = True,
-) -> str:
+def dumps(obj: Any, *, indent: int | None = None, ensure_ascii: bool = True) -> str:
     return dumps_bytes(obj, indent=indent, ensure_ascii=ensure_ascii).decode("utf-8")
 
 
 def loads(data: str | bytes | bytearray | memoryview) -> Any:
-    if _HAS_ORJSON:
+    if orjson is not None:
         if isinstance(data, str):
             return orjson.loads(data.encode("utf-8"))
         return orjson.loads(data)
@@ -48,10 +42,6 @@ def loads(data: str | bytes | bytearray | memoryview) -> Any:
 
 
 def dump(
-    obj: Any,
-    fp: TextIO,
-    *,
-    indent: int | None = None,
-    ensure_ascii: bool = True,
+    obj: Any, fp: TextIO, *, indent: int | None = None, ensure_ascii: bool = True
 ) -> None:
     fp.write(dumps(obj, indent=indent, ensure_ascii=ensure_ascii))
